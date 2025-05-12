@@ -74,20 +74,22 @@ resolver := dnscache.New(10)
 client := &http.Client{
 	Transport: &http.Transport{
 		MaxIdleConnsPerHost: 64,
-		Dial: func(network string, address string) (net.Conn, error) {
-			separator := strings.LastIndex(address, ":")
-			host := address[:separator]
-			port := address[separator:]
+		Dial: func(aNetwork string, aAddress string) (net.Conn, error) {
+			separator := strings.LastIndex(aAddress, ":")
+			host := aAddress[:separator]
+			port := aAddress[separator:]
 
-			ip, err := resolver.FetchOneString(host)
+			ip, err := resolver.FetchRandomString(host)
 			if nil != err {
 				return nil, err
 			}
 
 			// Connect using the resolved IP
 			return net.Dial("tcp", ip + port)
-		},
-	},
+		}, // Dial
+		TLSHandshakeTimeout: 10 * time.Second,
+	}, // Transport
+	Timeout: 30 * time.Second,
 } // client
 
 // Use the client
@@ -181,7 +183,7 @@ func shutdown() {
 
 The following external libraries were used building `dnscache`:
 
-* [ApacheLogger](https://github.com/mwat56/apachelogger)
+* _No external libraries were used to build this library._
 
 ## Licence
 

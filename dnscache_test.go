@@ -28,6 +28,81 @@ func Test_New(t *testing.T) {
 	}
 } // Test_New()
 
+func Test_NewWithOptions(t *testing.T) {
+	customResolver := &net.Resolver{
+		PreferGo: true,
+	}
+
+	type testCase struct {
+		name    string
+		options TResolverOptions
+		check   func(*testing.T, *TResolver)
+	}
+
+	tests := []testCase{
+		{
+			name:    "default options",
+			options: TResolverOptions{},
+			check: func(t *testing.T, r *TResolver) {
+				if nil == r {
+					t.Error("Expected non-nil resolver with default options")
+				}
+			},
+		},
+		{
+			name:    "custom refresh interval",
+			options: TResolverOptions{RefreshInterval: 10},
+			check: func(t *testing.T, r *TResolver) {
+				if nil == r {
+					t.Error("Expected non-nil resolver with custom refresh interval")
+				}
+			},
+		},
+		{
+			name:    "custom cache size",
+			options: TResolverOptions{CacheSize: 128},
+			check: func(t *testing.T, r *TResolver) {
+				if nil == r {
+					t.Error("Expected non-nil resolver with custom cache size")
+					return
+				}
+
+				testHost := "test.example.com"
+				testIP := net.ParseIP("192.168.1.1")
+				r.tCacheList[testHost] = []net.IP{testIP}
+
+				// Verify the element was added successfully
+				ips, ok := r.tCacheList[testHost]
+				if !ok || 1 != len(ips) || !ips[0].Equal(testIP) {
+					t.Error("Failed to add and retrieve element from cache with custom size")
+				}
+
+				// Clear the test data
+				delete(r.tCacheList, testHost)
+			},
+		},
+		{
+			name:    "custom resolver",
+			options: TResolverOptions{Resolver: customResolver},
+			check: func(t *testing.T, r *TResolver) {
+				if nil == r {
+					t.Error("Expected non-nil resolver with custom resolver")
+				}
+				if customResolver != r.resolver {
+					t.Error("Expected resolver to use custom resolver")
+				}
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			resolver := NewWithOptions(tc.options)
+			tc.check(t, resolver)
+		})
+	}
+} // Test_NewWithOptions()
+
 func Test_TResolver_Fetch(t *testing.T) {
 	type testCase struct {
 		name     string

@@ -23,6 +23,19 @@ type (
 	// `tCacheList` is a map of DNS cache entries.
 	tCacheList map[string][]net.IP
 
+	// `TResolverOptions` contains options for creating a resolver.
+	//
+	// This are the public fields to configure a new `TResolver` instance:
+	//
+	//   - `RefreshInterval`: Optional interval in minutes to refresh the cache.
+	//   - `Resolver`: Custom resolver, nil means use default.
+	//   - `CacheSize`: Initial cache size, 0 means use default (64).
+	TResolverOptions struct {
+		RefreshInterval uint8
+		Resolver        *net.Resolver
+		CacheSize       int
+	}
+
 	// `TResolver` is a DNS resolver with an optional background refresh.
 	//
 	// It embeds a map of DNS cache entries to store the DNS cache entries
@@ -30,13 +43,13 @@ type (
 	TResolver struct {
 		mtx      sync.RWMutex
 		abort    chan struct{} // signal to abort `autoRefresh()`
-		resolver *net.Resolver //TODO: make configurable
+		resolver *net.Resolver
 		tCacheList
 	}
 )
 
 // ---------------------------------------------------------------------------
-// constructor function:
+// Constructor functions:
 
 // `New()` returns a new DNS resolver with an optional background refresh.
 //
@@ -49,19 +62,44 @@ type (
 // Returns:
 //   - `*Resolver`: A new `Resolver` instance.
 func New(aRefreshInterval uint8) *TResolver {
-	resolver := &TResolver{
-		abort:      make(chan struct{}), // signal to abort `autoRefresh()`
-		resolver:   net.DefaultResolver, //TODO: make configurable
-		tCacheList: make(tCacheList, 64),
+	return NewWithOptions(TResolverOptions{
+		RefreshInterval: aRefreshInterval,
+		Resolver:        nil, // use default
+		CacheSize:       64,  // default size
+	})
+} // New()
+
+// `NewWithOptions()` returns a new DNS resolver with custom options.
+//
+// Parameters:
+//   - `aOptions`: Options for the resolver.
+//
+// Returns:
+//   - `*Resolver`: A new `Resolver` instance.
+func NewWithOptions(aOptions TResolverOptions) *TResolver {
+	cacheSize := aOptions.CacheSize
+	if 0 >= cacheSize {
+		cacheSize = 64
 	}
 
-	if 0 < aRefreshInterval {
-		go resolver.autoRefresh(time.Minute * time.Duration(aRefreshInterval))
+	resolver := aOptions.Resolver
+	if nil == resolver {
+		resolver = net.DefaultResolver
+	}
+
+	result := &TResolver{
+		abort:      make(chan struct{}),
+		resolver:   resolver,
+		tCacheList: make(tCacheList, cacheSize),
+	}
+
+	if 0 < aOptions.RefreshInterval {
+		go result.autoRefresh(time.Minute * time.Duration(aOptions.RefreshInterval))
 		runtime.Gosched() // yield to the new goroutine
 	}
 
-	return resolver
-} // New()
+	return result
+} // NewWithOptions()
 
 // ---------------------------------------------------------------------------
 // `Resolver` methods:
