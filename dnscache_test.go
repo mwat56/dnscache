@@ -87,6 +87,7 @@ func Test_NewWithOptions(t *testing.T) {
 			check: func(t *testing.T, r *TResolver) {
 				if nil == r {
 					t.Error("Expected non-nil resolver with custom resolver")
+					return
 				}
 				if customResolver != r.resolver {
 					t.Error("Expected resolver to use custom resolver")
