@@ -1,77 +1,187 @@
+/*
+Copyright © 2025  M.Watermann, 10247 Berlin, Germany
+
+	    All rights reserved
+	EMail : <support@mwat.de>
+*/
 package dnscache
+
 // Package dnscache caches DNS lookups
 
 import (
-  "net"
-  "sync"
-  "time"
+	"errors"
+	"maps"
+	"net"
+	"sync"
+	"time"
 )
 
-type Resolver struct {
-  lock sync.RWMutex
-  cache map[string][]net.IP
-}
+//lint:file-ignore ST1017 - I prefer Yoda conditions
 
-func New(refreshRate time.Duration) *Resolver {
-  resolver := &Resolver {
-    cache: make(map[string][]net.IP, 64),
-  }
-  if refreshRate > 0 {
-    go resolver.autoRefresh(refreshRate)
-  }
-  return resolver
-}
+type (
+	// `tCacheList` is a map of DNS cache entries.
+	tCacheList map[string][]net.IP
 
-func (r *Resolver) Fetch(address string) ([]net.IP, error) {
-  r.lock.RLock()
-  ips, exists := r.cache[address]
-  r.lock.RUnlock()
-  if exists { return ips, nil }
+	// `TResolver` is a DNS resolver with an optional background refresh.
+	//
+	// It embeds a map of DNS cache entries to store the DNS cache entries
+	// and uses a `sync.RWMutex` to synchronise access to the cache.
+	TResolver struct {
+		mtx   sync.RWMutex
+		abort chan struct{} // signal to abort `autoRefresh()`
+		tCacheList
+	}
+)
 
-  return r.Lookup(address)
-}
+// `ErrNoIps` is returned when no IP addresses are found for a hostname.
+var ErrNoIps = errors.New("no IPs found")
 
-func (r *Resolver) FetchOne(address string) (net.IP, error) {
-  ips, err := r.Fetch(address)
-  if err != nil || len(ips) == 0 { return nil, err}
-  return ips[0], nil
-}
+// ---------------------------------------------------------------------------
+// constructor function:
 
-func (r *Resolver) FetchOneString(address string) (string, error) {
-  ip, err := r.FetchOne(address)
-  if err != nil || ip == nil { return "", err }
-  return ip.String(), nil
-}
+// `New()` returns a new DNS resolver with an optional background refresh.
+//
+// If `aRefreshRate` is greater than zero, cached DNS entries will be
+// automatically refreshed at the specified interval.
+//
+// Parameters:
+//   - `aRefreshRate`: Optional interval in minutes to refresh the cache.
+//
+// Returns:
+//   - `*Resolver`: A new `Resolver` instance.
+func New(aRefreshRate uint8) *TResolver {
+	result := &TResolver{
+		abort:      make(chan struct{}), // signal to abort `autoRefresh()`
+		tCacheList: make(tCacheList, 64),
+	}
 
-func (r *Resolver) Refresh() {
-  i := 0
-  r.lock.RLock()
-  addresses := make([]string, len(r.cache))
-  for key, _ := range r.cache {
-    addresses[i] = key
-    i++
-  }
-  r.lock.RUnlock()
+	if 0 < aRefreshRate {
+		go result.autoRefresh(time.Duration(aRefreshRate) * time.Minute)
+	}
 
-  for _, address := range addresses {
-    r.Lookup(address)
-    time.Sleep(time.Second * 2)
-  }
-}
+	return result
+} // New()
 
-func (r *Resolver) Lookup(address string) ([]net.IP, error) {
-  ips, err := net.LookupIP(address)
-  if err != nil { return nil, err }
+// ---------------------------------------------------------------------------
+// `Resolver` methods:
 
-  r.lock.Lock()
-  r.cache[address] = ips
-  r.lock.Unlock()
-  return ips, nil
-}
+// `autoRefresh()` refreshes the cache at a given interval.
+//
+// Parameters:
+//   - `aRate`: Time interval to refresh the cache.
+func (r *TResolver) autoRefresh(aRate time.Duration) {
+	ticker := time.NewTicker(aRate)
+	defer ticker.Stop()
 
-func (r *Resolver) autoRefresh(rate time.Duration) {
-  for {
-    time.Sleep(rate)
-    r.Refresh()
-  }
-}
+	for {
+		select {
+		case <-ticker.C:
+			r.Refresh()
+
+		case <-r.abort:
+			return
+		}
+	}
+} // autoRefresh()
+
+// `Fetch()` returns the IP addresses for a given hostname.
+//
+// Parameters:
+//   - `aHostname`: The hostname to resolve.
+//
+// Returns:
+//   - `[]net.IP`: List of IP addresses for the given hostname.
+//   - `error`: `nil` if the hostname was resolved successfully, the error otherwise.
+func (r *TResolver) Fetch(aHostname string) ([]net.IP, error) {
+	r.mtx.RLock()
+	ips, ok := r.tCacheList[aHostname]
+	r.mtx.RUnlock()
+
+	if ok && (0 < len(ips)) {
+		// fast path: we've already resolved this hostname
+		return ips, nil
+	}
+
+	// slow path: we need to resolve this hostname
+	return r.Lookup(aHostname)
+} // Fetch()
+
+// `FetchOne()` returns the first IP address for a given hostname.
+//
+// If the hostname has multiple IP addresses, the first one is returned.
+//
+// Parameters:
+//   - `aHostname`: The hostname to resolve.
+//
+// Returns:
+//   - `net.IP`: First IP address for the given hostname.
+//   - `error`: `nil` if the hostname was resolved successfully, the error otherwise.
+func (r *TResolver) FetchOne(aHostname string) (net.IP, error) {
+	ips, err := r.Fetch(aHostname)
+	if nil != err {
+		return nil, err
+	}
+
+	return ips[0], nil
+} // FetchOne()
+
+// `FetchOneString()` returns the first IP address for a given hostname
+// as a string.
+//
+// Parameters:
+//   - `aHostname`: The hostname to resolve.
+//
+// Returns:
+//   - `string`: First IP address for the given hostname as a string.
+//   - `error`: `nil` if the hostname was resolved successfully, the error otherwise.
+func (r *TResolver) FetchOneString(aHostname string) (string, error) {
+	ip, err := r.FetchOne(aHostname)
+	if nil != err {
+		return "", err
+	}
+
+	return ip.String(), nil
+} // FetchOneString()
+
+// `Lookup()` resolves a hostname and caches the result.
+//
+// Parameters:
+//   - `aHostname`: The hostname to resolve.
+//
+// Returns:
+//   - `[]net.IP`: List of IP addresses for the given hostname.
+//   - `error`: `nil` if the hostname was resolved successfully, the error otherwise.
+func (r *TResolver) Lookup(aHostname string) ([]net.IP, error) {
+	ips, err := net.LookupIP(aHostname)
+	if nil != err {
+		return nil, err
+	}
+	if 0 == len(ips) {
+		return nil, ErrNoIps
+	}
+
+	r.mtx.Lock()
+	r.tCacheList[aHostname] = ips
+	r.mtx.Unlock()
+
+	return ips, nil
+} // Lookup()
+
+// `Refresh()` resolves all cached hostnames and updates the cache.
+//
+// This method is called by automatically if a refresh rate was
+// specified in the `New()` constructor.
+func (r *TResolver) Refresh() {
+	r.mtx.RLock()
+	// This is a shallow clone, the new keys and values
+	// are set using ordinary assignment:
+	hosts := maps.Clone(r.tCacheList)
+	r.mtx.RUnlock()
+
+	for host := range hosts {
+		_, _ = r.Lookup(host) //#nosec G104
+		time.Sleep(time.Second * 2)
+	}
+} // Refresh()
+
+/* _EoF_ */
