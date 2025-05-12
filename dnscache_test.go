@@ -1,79 +1,323 @@
+/*
+Copyright © 2025  M.Watermann, 10247 Berlin, Germany
+
+	    All rights reserved
+	EMail : <support@mwat.de>
+*/
 package dnscache
 
 import (
-  "net"
-  "sort"
-  "time"
-  "testing"
+	"net"
+	"slices"
+	"testing"
 )
 
-func TestFetchReturnsAndErrorOnInvalidLookup(t *testing.T) {
-  ips, err := New(0).Lookup("invalid.viki.io")
-  if ips != nil {
-    t.Errorf("Expecting nil ips, got %v", ips)
-  }
-  expected := "lookup invalid.viki.io: no such host"
-  if err.Error() != expected {
-    t.Errorf("Expecting %q error, got %q", expected, err.Error())
-  }
-}
+//lint:file-ignore ST1017 - I prefer Yoda conditions
 
-func TestFetchReturnsAListOfIps(t *testing.T) {
-  ips, _ := New(0).Lookup("dnscache.go.test.viki.io")
-  assertIps(t, ips, []string{"1.123.58.13", "31.85.32.110"})
-}
+func Test_New(t *testing.T) {
+	// Test with zero refresh interval
+	r1 := New(0)
+	if nil == r1 {
+		t.Error("Expected non-nil resolver with zero refresh rate")
+	}
 
-func TestCallingLookupAddsTheItemToTheCache(t *testing.T) {
-  r := New(0)
-  r.Lookup("dnscache.go.test.viki.io")
-  assertIps(t, r.cache["dnscache.go.test.viki.io"], []string{"1.123.58.13", "31.85.32.110"})
-}
+	// Test with positive refresh interval
+	r2 := New(5)
+	if nil == r2 {
+		t.Error("Expected non-nil resolver with positive refresh rate")
+	}
+} // Test_New()
 
-func TestFetchLoadsValueFromTheCache(t *testing.T) {
-  r := New(0)
-  r.cache["invalid.viki.io"] = []net.IP{net.ParseIP("1.1.2.3")}
-  ips, _ := r.Fetch("invalid.viki.io")
-  assertIps(t, ips, []string{"1.1.2.3"})
-}
+func Test_TResolver_Fetch(t *testing.T) {
+	type testCase struct {
+		name     string
+		hostname string
+		setup    func(*TResolver)
+		wantIPs  []string
+		wantErr  bool
+	}
 
-func TestFetchOneLoadsTheFirstValue(t *testing.T) {
-  r := New(0)
-  r.cache["something.viki.io"] = []net.IP{net.ParseIP("1.1.2.3"), net.ParseIP("100.100.102.103")}
-  ip, _ := r.FetchOne("something.viki.io")
-  assertIps(t, []net.IP{ip}, []string{"1.1.2.3"})
-}
+	tests := []testCase{
+		{
+			name:     "fetch from cache",
+			hostname: "cached.example.com",
+			setup: func(r *TResolver) {
+				r.tCacheList["cached.example.com"] = []net.IP{
+					net.ParseIP("192.168.1.1"),
+					net.ParseIP("192.168.1.2"),
+				}
+			},
+			wantIPs: []string{"192.168.1.1", "192.168.1.2"},
+			wantErr: false,
+		},
+		{
+			name:     "fetch uncached (lookup)",
+			hostname: "dnscache.ggl.io",
+			setup:    func(r *TResolver) {},
+			wantIPs:  []string{"3.33.165.172", "15.197.228.149"},
+			wantErr:  false,
+		},
+		{
+			name:     "fetch invalid hostname",
+			hostname: "invalid.end.of.universe",
+			setup:    func(r *TResolver) {},
+			wantIPs:  nil,
+			wantErr:  true,
+		},
+	}
 
-func TestFetchOneStringLoadsTheFirstValue(t *testing.T) {
-  r := New(0)
-  r.cache["something.viki.io"] = []net.IP{net.ParseIP("100.100.102.103"), net.ParseIP("100.100.102.104")}
-  ip, _ := r.FetchOneString("something.viki.io")
-  if ip != "100.100.102.103" {
-    t.Errorf("expected 100.100.102.103 but got %v", ip)
-  }
-}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			resolver := New(0)
+			tc.setup(resolver)
 
-func TestFetchLoadsTheIpAndCachesIt(t *testing.T) {
-  r := New(0)
-  ips, _ := r.Fetch("dnscache.go.test.viki.io")
-  assertIps(t, ips, []string{"1.123.58.13", "31.85.32.110"})
-  assertIps(t, r.cache["dnscache.go.test.viki.io"], []string{"1.123.58.13", "31.85.32.110"})
-}
+			ips, err := resolver.Fetch(tc.hostname)
 
-func TestItReloadsTheIpsAtAGivenInterval(t *testing.T) {
-  r := New(1)
-  r.cache["dnscache.go.test.viki.io"] = nil
-  time.Sleep(time.Second * 2)
-  assertIps(t, r.cache["dnscache.go.test.viki.io"], []string{"1.123.58.13", "31.85.32.110"})
-}
+			// Check error
+			if (nil != err) != tc.wantErr {
+				t.Errorf("Fetch() error = '%v', wantErr '%v'",
+					err, tc.wantErr)
+				return
+			}
+
+			// Check IPs
+			if nil == tc.wantIPs {
+				if nil != ips {
+					t.Errorf("Expected nil IPs, got: %v",
+						ips)
+				}
+				return
+			}
+			assertIps(t, ips, tc.wantIPs)
+		})
+	}
+} // Test_TResolver_Fetch()
+
+func Test_TResolver_FetchOneString(t *testing.T) {
+	type testCase struct {
+		name     string
+		hostname string
+		setup    func(*TResolver)
+		want     string
+		wantErr  bool
+	}
+
+	tests := []testCase{
+		{
+			name:     "fetch from cache",
+			hostname: "cached.example.com",
+			setup: func(r *TResolver) {
+				r.tCacheList["cached.example.com"] = []net.IP{
+					net.ParseIP("192.168.1.1"),
+				}
+			},
+			want:    "192.168.1.1",
+			wantErr: false,
+		},
+		{
+			name:     "fetch uncached (lookup)",
+			hostname: "dnscache.ggl.io",
+			setup:    func(r *TResolver) {},
+			want:     "3.33.165.172", // Assuming this is the first IP returned
+			wantErr:  false,
+		},
+		{
+			name:     "fetch invalid hostname",
+			hostname: "invalid.end.of.universe",
+			setup:    func(r *TResolver) {},
+			want:     "",
+			wantErr:  true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			resolver := New(0)
+			tc.setup(resolver)
+
+			got, err := resolver.FetchOneString(tc.hostname)
+
+			// Check error
+			if (nil != err) != tc.wantErr {
+				t.Errorf("FetchOneString() error = '%v', wantErr '%v'",
+					err, tc.wantErr)
+				return
+			}
+
+			// For error cases, we don't need to check the result
+			if tc.wantErr {
+				return
+			}
+
+			// For the lookup case, we can't predict the exact IP
+			// so we just check that we got a non-empty string
+			if "fetch uncached (lookup)" == tc.name {
+				if "" == got {
+					t.Errorf("FetchOneString() got empty string, want non-empty")
+				}
+				return
+			}
+
+			// For cached case, check exact match
+			if got != tc.want {
+				t.Errorf("FetchOneString() got = %q, want %q",
+					got, tc.want)
+			}
+		})
+	}
+} // Test_TResolver_FetchOneString()
+
+func Test_TResolver_FetchRandomString(t *testing.T) {
+	type testCase struct {
+		name     string
+		hostname string
+		setup    func(*TResolver)
+		wantErr  bool
+	}
+
+	tests := []testCase{
+		{
+			name:     "fetch from cache",
+			hostname: "cached.example.com",
+			setup: func(r *TResolver) {
+				r.tCacheList["cached.example.com"] = []net.IP{
+					net.ParseIP("192.168.1.1"),
+					net.ParseIP("192.168.1.2"),
+				}
+			},
+			wantErr: false,
+		},
+		{
+			name:     "fetch uncached (lookup)",
+			hostname: "dnscache.ggl.io",
+			setup:    func(r *TResolver) {},
+			wantErr:  false,
+		},
+		{
+			name:     "fetch invalid hostname",
+			hostname: "invalid.end.of.universe",
+			setup:    func(r *TResolver) {},
+			wantErr:  true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			resolver := New(0)
+			tc.setup(resolver)
+
+			got, err := resolver.FetchRandomString(tc.hostname)
+
+			// Check error
+			if (nil != err) != tc.wantErr {
+				t.Errorf("FetchRandomString() error = '%v', wantErr '%v'",
+					err, tc.wantErr)
+				return
+			}
+
+			// For error cases, we don't need to check the result
+			if tc.wantErr {
+				return
+			}
+
+			// For non-error cases, check that we got a non-empty string
+			if "" == got {
+				t.Errorf("FetchRandomString() got empty string, want non-empty")
+			}
+
+			// For cached case, verify the result is one of the expected IPs
+			if "fetch from cache" == tc.name {
+				expected := []string{"192.168.1.1", "192.168.1.2"}
+				if !slices.Contains(expected, got) {
+					t.Errorf("FetchRandomString() got = %q, want one of '%v'",
+						got, expected)
+				}
+			}
+		})
+	}
+} // Test_TResolver_FetchRandomString()
+
+func Test_TResolver_Refresh(t *testing.T) {
+	type testCase struct {
+		name     string
+		setup    func(*TResolver)
+		validate func(*testing.T, *TResolver)
+	}
+
+	tests := []testCase{
+		{
+			name: "multiple entries with valid hosts",
+			setup: func(r *TResolver) {
+				// Use real domains that should resolve successfully
+				r.tCacheList["example.com"] = []net.IP{
+					net.ParseIP("93.184.216.34"), // example.com's IP
+				}
+				r.tCacheList["google.com"] = []net.IP{
+					net.ParseIP("142.250.185.78"), // one of Google's IPs
+				}
+			},
+			validate: func(t *testing.T, r *TResolver) {
+				// After refresh, these entries should still exist
+				// but might have different IPs due to DNS changes
+				ips1, err := r.Fetch("example.com")
+				if nil != err || 0 == len(ips1) {
+					t.Errorf("Valid entry should be preserved: err=%v, ips=%v",
+						err, ips1)
+				}
+
+				ips2, err := r.Fetch("google.com")
+				if nil != err || 0 == len(ips2) {
+					t.Errorf("Valid entry should be preserved: err=%v, ips=%v",
+						err, ips2)
+				}
+			},
+		},
+		{
+			name: "entries with invalid hosts",
+			setup: func(r *TResolver) {
+				// Use a non-existent domain that should fail DNS lookup
+				r.tCacheList["invalid.example.nonexistent"] = []net.IP{
+					net.ParseIP("192.168.1.1"),
+				}
+			},
+			validate: func(t *testing.T, r *TResolver) {
+				// After refresh, this entry should be removed
+				r.mtx.RLock()
+				_, exists := r.tCacheList["invalid.example.nonexistent"]
+				r.mtx.RUnlock()
+
+				if exists {
+					t.Errorf("Invalid entry should be removed from cache")
+				}
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			resolver := New(0)
+			tc.setup(resolver)
+
+			// Call Refresh
+			resolver.Refresh()
+
+			// Validate results
+			tc.validate(t, resolver)
+		})
+	}
+} // Test_TResolver_Refresh()
 
 func assertIps(t *testing.T, actuals []net.IP, expected []string) {
-  if len(actuals) != len(expected) {
-    t.Errorf("Expecting %d ips, got %d", len(expected), len(actuals))
-  }
-  sort.Strings(expected)
-  for _, ip := range actuals {
-    if sort.SearchStrings(expected, ip.String()) == -1 {
-      t.Errorf("Got an unexpected ip: %v:", actuals[0])
-    }
-  }
-}
+	if len(actuals) != len(expected) {
+		t.Errorf("Expecting %d ips, got %d", len(expected), len(actuals))
+	}
+
+	for _, ip := range actuals {
+		if !slices.Contains(expected, ip.String()) {
+			t.Errorf("Unexpected IP: '%v', missing in '%v",
+				ip, expected)
+		}
+	}
+} // assertIps()
+
+/* _EoF_ */
