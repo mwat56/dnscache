@@ -13,6 +13,10 @@
 	- [Purpose](#purpose)
 	- [Installation](#installation)
 	- [Usage](#usage)
+		- [Configuration Options](#configuration-options)
+			- [Available Options](#available-options)
+				- [Basic usage with default options except refresh interval:](#basic-usage-with-default-options-except-refresh-interval)
+				- [Advanced usage with custom options:](#advanced-usage-with-custom-options)
 		- [Example Use Cases](#example-use-cases)
 			- [1. HTTP Client with DNS Caching](#1-http-client-with-dns-caching)
 			- [2. Load Balancing with Random IP Selection](#2-load-balancing-with-random-ip-selection)
@@ -44,7 +48,7 @@ go get github.com/mwat56/dnscache
 
 ## Usage
 
-The cache is thread safe. Create a new instance by specifying how long each entry should be cached (in minutes). Items will be refreshed in the background.
+The cache is thread safe. Create a new instance by specifying how long each entry should be cached (in minutes). IPs can be refreshed in the background; the default refresh interval is `0` (disabled). The default number of lookup retries is `3`.
 
 ```go
 // refresh items every 5 minutes
@@ -58,6 +62,45 @@ ip, _ := resolver.FetchOne("api.google.de")
 
 // get the first net.IP as string
 ip, _ := resolver.FetchOneString("api.google.de")
+```
+
+### Configuration Options
+
+The `dnscache` package offers several configuration options through the `TResolverOptions` struct:
+
+```go
+TResolverOptions struct {
+    CacheSize       int
+    Resolver        *net.Resolver
+    MaxRetries      uint8
+    RefreshInterval uint8
+}
+```
+
+#### Available Options
+
+- CacheSize: Initial size of the DNS cache (default: `64`),
+- Resolver: Custom DNS resolver to use (default: `net.DefaultResolver`),
+- MaxRetries: Maximum number of retry attempts for DNS lookups (default: `3`),
+- RefreshInterval: How often to refresh cached entries in minutes (`0` disables background refresh).
+
+##### Basic usage with default options except refresh interval:
+
+```go
+// refresh items every 5 minutes
+resolver := dnscache.New(5)
+```
+
+##### Advanced usage with custom options:
+
+```go
+// refresh items every 10 minutes, use custom resolver, and retry 5 times
+resolver := dnscache.NewWithOptions(dnscache.TResolverOptions{
+    CacheSize:       128,
+    Resolver:        myCustomResolver,
+    MaxRetries:      5,
+    RefreshInterval: 10,
+})
 ```
 
 ### Example Use Cases

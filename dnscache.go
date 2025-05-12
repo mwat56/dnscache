@@ -27,13 +27,15 @@ type (
 	//
 	// This are the public fields to configure a new `TResolver` instance:
 	//
-	//   - `RefreshInterval`: Optional interval in minutes to refresh the cache.
+	//   - `CacheSize`: Initial cache size, `0` means use default (`64`).
 	//   - `Resolver`: Custom resolver, nil means use default.
-	//   - `CacheSize`: Initial cache size, 0 means use default (64).
+	//   - `MaxRetries`: Maximum number of retries for DNS lookup, `0` means use default (`3`).
+	//   - `RefreshInterval`: Optional interval in minutes to refresh the cache.
 	TResolverOptions struct {
-		RefreshInterval uint8
-		Resolver        *net.Resolver
 		CacheSize       int
+		Resolver        *net.Resolver
+		MaxRetries      uint8
+		RefreshInterval uint8
 	}
 
 	// `TResolver` is a DNS resolver with an optional background refresh.
@@ -45,6 +47,7 @@ type (
 		abort    chan struct{} // signal to abort `autoRefresh()`
 		resolver *net.Resolver
 		tCacheList
+		retries uint8
 	}
 )
 
@@ -63,9 +66,10 @@ type (
 //   - `*Resolver`: A new `Resolver` instance.
 func New(aRefreshInterval uint8) *TResolver {
 	return NewWithOptions(TResolverOptions{
-		RefreshInterval: aRefreshInterval,
+		CacheSize:       0,   // use default
 		Resolver:        nil, // use default
-		CacheSize:       64,  // default size
+		MaxRetries:      0,   // use default
+		RefreshInterval: aRefreshInterval,
 	})
 } // New()
 
@@ -79,18 +83,24 @@ func New(aRefreshInterval uint8) *TResolver {
 func NewWithOptions(aOptions TResolverOptions) *TResolver {
 	cacheSize := aOptions.CacheSize
 	if 0 >= cacheSize {
-		cacheSize = 64
+		cacheSize = 64 // use default
 	}
 
-	resolver := aOptions.Resolver
-	if nil == resolver {
-		resolver = net.DefaultResolver
+	optResolver := aOptions.Resolver
+	if nil == optResolver {
+		optResolver = net.DefaultResolver
+	}
+
+	optRetries := aOptions.MaxRetries
+	if 0 == optRetries {
+		optRetries = 3 // use default
 	}
 
 	result := &TResolver{
 		abort:      make(chan struct{}),
-		resolver:   resolver,
+		resolver:   optResolver,
 		tCacheList: make(tCacheList, cacheSize),
+		retries:    optRetries,
 	}
 
 	if 0 < aOptions.RefreshInterval {
@@ -266,7 +276,42 @@ func (r *TResolver) FetchRandomString(aHostname string) (string, error) {
 //   - `[]net.IP`: List of IP addresses for the given hostname.
 //   - `error`: `nil` if the hostname was resolved successfully, the error otherwise.
 func (r *TResolver) Lookup(aCtx context.Context, aHostname string) ([]net.IP, error) {
-	ips, err := r.resolver.LookupIP(aCtx, "ip", aHostname)
+	var (
+		dnsErr *net.DNSError
+		err    error
+		ips    []net.IP
+	)
+
+	// Try to resolve the hostname several times
+	for loop := uint8(0); loop < r.retries; loop++ {
+		// Check if context is done before each attempt
+		select {
+		case <-aCtx.Done():
+			return nil, aCtx.Err()
+		default:
+			// Continue with lookup
+		}
+
+		ips, err = r.resolver.LookupIP(aCtx, "ip", aHostname)
+		if nil == err {
+			break // Lookup succeeded
+		}
+
+		// Check if it's a "not found" DNS error
+		if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
+			// No need to retry for non-existent domains
+			return nil, err
+		}
+
+		// Short delay before retry, respecting context
+		select {
+		case <-aCtx.Done():
+			return nil, aCtx.Err()
+		default:
+			runtime.Gosched() // yield to other goroutines
+		}
+	} // for loop
+
 	if nil != err {
 		return nil, err
 	}
@@ -301,32 +346,25 @@ func (r *TResolver) Refresh() {
 	r.mtx.RUnlock()
 
 	for host := range hosts {
-		// Try to resolve each hostname up to 3 times:
-		for loop := 0; loop < 3; {
-			select {
-			case <-ctx.Done():
-				return // Context timeout or cancellation
-			case <-limiter.C:
-				// Lookup the hostname:
-				_, err := r.Lookup(ctx, host)
-				if nil != err {
-					if errors.As(err, &dnsErr) {
-						if dnsErr.IsNotFound {
-							// We'e working on a (possibly outdated) copy
-							// of the cache, but we delete the non-existing
-							// host from our original cache:
-							r.mtx.Lock()
-							delete(r.tCacheList, host)
-							r.mtx.Unlock()
-							loop = 254 // host not found: Break retry loop
-						}
+		select {
+		case <-ctx.Done():
+			return // Context timeout or cancellation
+		case <-limiter.C:
+			// Lookup the hostname:
+			_, err := r.Lookup(ctx, host)
+			if nil != err {
+				if errors.As(err, &dnsErr) {
+					if dnsErr.IsNotFound {
+						// We'e working on a (possibly outdated) copy
+						// of the cache, but we delete the non-existing
+						// host from our original cache:
+						r.mtx.Lock()
+						delete(r.tCacheList, host)
+						r.mtx.Unlock()
 					}
-					loop++ // Continue retry loop
-				} else {
-					loop = 255 // Lookup succeeded: Break retry loop
 				}
-				runtime.Gosched() // yield to other goroutines
 			}
+			runtime.Gosched() // yield to other goroutines
 		}
 	}
 } // Refresh()

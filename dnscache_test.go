@@ -19,12 +19,19 @@ func Test_New(t *testing.T) {
 	r1 := New(0)
 	if nil == r1 {
 		t.Error("Expected non-nil resolver with zero refresh rate")
+	} else if 3 != r1.retries {
+		t.Errorf("Expected default retries to be 3, got %d",
+			r1.retries)
+
 	}
 
 	// Test with positive refresh interval
 	r2 := New(5)
 	if nil == r2 {
 		t.Error("Expected non-nil resolver with positive refresh rate")
+	} else if 3 != r2.retries {
+		t.Errorf("Expected default retries to be 3, got %d",
+			r2.retries)
 	}
 } // Test_New()
 
@@ -46,6 +53,11 @@ func Test_NewWithOptions(t *testing.T) {
 			check: func(t *testing.T, r *TResolver) {
 				if nil == r {
 					t.Error("Expected non-nil resolver with default options")
+					return
+				}
+				if 3 != r.retries {
+					t.Errorf("Expected default retries to be 3, got %d",
+						r.retries)
 				}
 			},
 		},
@@ -91,6 +103,20 @@ func Test_NewWithOptions(t *testing.T) {
 				}
 				if customResolver != r.resolver {
 					t.Error("Expected resolver to use custom resolver")
+				}
+			},
+		},
+		{
+			name:    "custom max retries",
+			options: TResolverOptions{MaxRetries: 5},
+			check: func(t *testing.T, r *TResolver) {
+				if nil == r {
+					t.Error("Expected non-nil resolver with custom max retries")
+					return
+				}
+				if 5 != r.retries {
+					t.Errorf("Expected retries to be 5, got %d",
+						r.retries)
 				}
 			},
 		},
