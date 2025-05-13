@@ -13,6 +13,7 @@ import (
 	"math/rand"
 	"net"
 	"runtime"
+	"slices"
 	"sync"
 	"time"
 )
@@ -27,11 +28,13 @@ type (
 	//
 	// This are the public fields to configure a new `TResolver` instance:
 	//
+	//   - `DNSservers`: List of DNS servers to use, `nil` means use system default.
 	//   - `CacheSize`: Initial cache size, `0` means use default (`64`).
-	//   - `Resolver`: Custom resolver, nil means use default.
+	//   - `Resolver`: Custom resolver, `nil` means use default.
 	//   - `MaxRetries`: Maximum number of retries for DNS lookup, `0` means use default (`3`).
 	//   - `RefreshInterval`: Optional interval in minutes to refresh the cache.
 	TResolverOptions struct {
+		DNSservers      []string
 		CacheSize       int
 		Resolver        *net.Resolver
 		MaxRetries      uint8
@@ -41,11 +44,12 @@ type (
 	// `TResolver` is a DNS resolver with an optional background refresh.
 	//
 	// It embeds a map of DNS cache entries to store the DNS cache entries
-	// and uses a `sync.RWMutex` to synchronise access to the cache.
+	// and uses a Mutex to synchronise access to that cache.
 	TResolver struct {
-		mtx      sync.RWMutex
-		abort    chan struct{} // signal to abort `autoRefresh()`
-		resolver *net.Resolver
+		mtx        sync.RWMutex
+		dnsServers []string
+		abort      chan struct{} // signal to abort `autoRefresh()`
+		resolver   *net.Resolver
 		tCacheList
 		retries uint8
 	}
@@ -66,9 +70,10 @@ type (
 //   - `*Resolver`: A new `Resolver` instance.
 func New(aRefreshInterval uint8) *TResolver {
 	return NewWithOptions(TResolverOptions{
-		CacheSize:       0,   // use default
-		Resolver:        nil, // use default
-		MaxRetries:      0,   // use default
+		// DNSservers:      nil, // use default
+		// CacheSize:       0,   // use default
+		// Resolver:        nil, // use default
+		// MaxRetries:      0,   // use default
 		RefreshInterval: aRefreshInterval,
 	})
 } // New()
@@ -81,9 +86,35 @@ func New(aRefreshInterval uint8) *TResolver {
 // Returns:
 //   - `*Resolver`: A new `Resolver` instance.
 func NewWithOptions(aOptions TResolverOptions) *TResolver {
-	cacheSize := aOptions.CacheSize
-	if 0 >= cacheSize {
-		cacheSize = 64 // use default
+	optServers := aOptions.DNSservers
+	if (nil == optServers) || (0 == len(optServers)) {
+		var err error
+		if optServers, err = getDNSServers(); (nil != err) ||
+			(0 == len(optServers)) {
+			optServers = nil
+		}
+	} else {
+		// Check whether the provided DNS servers are valid
+		c := slices.Clone(optServers)
+		for i, server := range c {
+			if nil == net.ParseIP(server) {
+				// Remove invalid server from list
+				optServers = slices.Delete(optServers, i, i+1)
+			}
+		}
+		c = nil // free memory
+		if 0 == len(optServers) {
+			var err error
+			if optServers, err = getDNSServers(); (nil != err) ||
+				(0 == len(optServers)) {
+				optServers = nil
+			}
+		}
+	}
+
+	optCacheSize := aOptions.CacheSize
+	if 0 >= optCacheSize {
+		optCacheSize = 64 // use default
 	}
 
 	optResolver := aOptions.Resolver
@@ -97,9 +128,10 @@ func NewWithOptions(aOptions TResolverOptions) *TResolver {
 	}
 
 	result := &TResolver{
+		dnsServers: optServers,
 		abort:      make(chan struct{}),
 		resolver:   optResolver,
-		tCacheList: make(tCacheList, cacheSize),
+		tCacheList: make(tCacheList, optCacheSize),
 		retries:    optRetries,
 	}
 
@@ -266,6 +298,38 @@ func (r *TResolver) FetchRandomString(aHostname string) (string, error) {
 	return ip.String(), nil
 } // FetchRandomString()
 
+// `lookup()` resolves `aHostname` with the given context.
+//
+// Parameters:
+//   - `aCtx`: Context for the lookup operation.
+//   - `aHostname`: The hostname to resolve.
+//
+// Returns:
+//   - `rIPs`: List of IP addresses for the given hostname.
+//   - `rErr`: `nil` if the hostname was resolved successfully, the error otherwise.
+func (r *TResolver) lookup(aCtx context.Context, aHostname string) (rIPs []net.IP, rErr error) {
+	if nil != r.dnsServers {
+		for _, server := range r.dnsServers {
+			if rIPs, rErr = lookupDNS(aCtx, server, aHostname); nil == rErr {
+				return // Lookup succeeded
+			}
+		}
+	}
+
+	if rIPs, rErr = r.resolver.LookupIP(aCtx, "ip", aHostname); nil == rErr {
+		return // Lookup succeeded
+	}
+
+	// Check if it's a "not found" DNS error
+	var dnsErr *net.DNSError
+	if errors.As(rErr, &dnsErr) && dnsErr.IsNotFound {
+		// No need to retry for a non-existent host
+		rIPs = nil
+	}
+
+	return
+} // lookup()
+
 // `Lookup()` resolves a hostname with the given context and caches the result.
 //
 // Parameters:
@@ -277,9 +341,8 @@ func (r *TResolver) FetchRandomString(aHostname string) (string, error) {
 //   - `error`: `nil` if the hostname was resolved successfully, the error otherwise.
 func (r *TResolver) Lookup(aCtx context.Context, aHostname string) ([]net.IP, error) {
 	var (
-		dnsErr *net.DNSError
-		err    error
-		ips    []net.IP
+		err error
+		ips []net.IP
 	)
 
 	// Try to resolve the hostname several times
@@ -292,15 +355,8 @@ func (r *TResolver) Lookup(aCtx context.Context, aHostname string) ([]net.IP, er
 			// Continue with lookup
 		}
 
-		ips, err = r.resolver.LookupIP(aCtx, "ip", aHostname)
-		if nil == err {
+		if ips, err = r.lookup(aCtx, aHostname); nil == err {
 			break // Lookup succeeded
-		}
-
-		// Check if it's a "not found" DNS error
-		if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
-			// No need to retry for non-existent domains
-			return nil, err
 		}
 
 		// Short delay before retry, respecting context

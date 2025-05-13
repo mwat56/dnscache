@@ -55,6 +55,10 @@ func Test_NewWithOptions(t *testing.T) {
 					t.Error("Expected non-nil resolver with default options")
 					return
 				}
+				if nil == r.dnsServers {
+					t.Error("Expected non-nil server list with default options")
+					return
+				}
 				if 3 != r.retries {
 					t.Errorf("Expected default retries to be 3, got %d",
 						r.retries)
@@ -62,11 +66,52 @@ func Test_NewWithOptions(t *testing.T) {
 			},
 		},
 		{
+			name:    "custom DNS servers",
+			options: TResolverOptions{DNSservers: []string{"8.8.8.8", "8.8.4.4"}},
+			check: func(t *testing.T, r *TResolver) {
+				if nil == r {
+					t.Error("Expected non-nil resolver with custom DNS servers")
+					return
+				}
+				if nil == r.dnsServers {
+					t.Error("Expected non-nil server list with custom DNS servers")
+					return
+				}
+				if !slices.Equal(r.dnsServers, []string{"8.8.8.8", "8.8.4.4"}) {
+					t.Errorf("Expected DNS servers to be ['8.8.8.8', '8.8.4.4'], got\n%v",
+						r.dnsServers)
+				}
+			},
+		},
+		{
+			name:    "invalid DNS servers",
+			options: TResolverOptions{DNSservers: []string{"234.567.890.1"}},
+			check: func(t *testing.T, r *TResolver) {
+				if nil == r {
+					t.Error("Expected non-nil resolver with invalid DNS servers")
+					return
+				}
+				if nil == r.dnsServers {
+					t.Error("Expected non-nil server list with invalid DNS servers")
+					return
+				}
+				// if !slices.Equal(r.dnsServers, []string{"8.8.8.8", "8.8.4.4"}) {
+				// 	t.Errorf("Expected DNS servers to be ['8.8.8.8', '8.8.4.4'], got\n%v",
+				// 		r.dnsServers)
+				// }
+			},
+		},
+		{
 			name:    "custom refresh interval",
-			options: TResolverOptions{RefreshInterval: 10},
+			options: TResolverOptions{RefreshInterval: 1},
 			check: func(t *testing.T, r *TResolver) {
 				if nil == r {
 					t.Error("Expected non-nil resolver with custom refresh interval")
+					return
+				}
+				if nil == r.dnsServers {
+					t.Error("Expected non-nil server list with custom refresh interval")
+					return
 				}
 			},
 		},
@@ -76,6 +121,10 @@ func Test_NewWithOptions(t *testing.T) {
 			check: func(t *testing.T, r *TResolver) {
 				if nil == r {
 					t.Error("Expected non-nil resolver with custom cache size")
+					return
+				}
+				if nil == r.dnsServers {
+					t.Error("Expected non-nil server list with custom cache size")
 					return
 				}
 
@@ -411,7 +460,9 @@ func Test_TResolver_Refresh(t *testing.T) {
 
 func assertIps(t *testing.T, actuals []net.IP, expected []string) {
 	if len(actuals) != len(expected) {
-		t.Errorf("Expecting %d ips, got %d", len(expected), len(actuals))
+		t.Errorf("Expecting %d ips, got %d\n%v\ninstead of:\n%v",
+			len(expected), len(actuals), actuals, expected)
+		return
 	}
 
 	for _, ip := range actuals {

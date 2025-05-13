@@ -69,33 +69,37 @@ ip, _ := resolver.FetchOneString("api.google.de")
 The `dnscache` package offers several configuration options through the `TResolverOptions` struct:
 
 ```go
-TResolverOptions struct {
-    CacheSize       int
-    Resolver        *net.Resolver
-    MaxRetries      uint8
-    RefreshInterval uint8
+type TResolverOptions struct {
+	DNSservers      []string
+	CacheSize       int
+	Resolver        *net.Resolver
+	MaxRetries      uint8
+	RefreshInterval uint8
 }
 ```
 
 #### Available Options
 
-- CacheSize: Initial size of the DNS cache (default: `64`),
-- Resolver: Custom DNS resolver to use (default: `net.DefaultResolver`),
-- MaxRetries: Maximum number of retry attempts for DNS lookups (default: `3`),
-- RefreshInterval: How often to refresh cached entries in minutes (`0` disables background refresh).
+- `DNSservers`: List of DNS servers to use, `nil` means use system default.
+- `CacheSize`: Initial size of the DNS cache (default: `64`),
+- `Resolver`: Custom DNS resolver to use (default: `net.DefaultResolver`),
+- `MaxRetries`: Maximum number of retry attempts for DNS lookups (default: `3`),
+- `RefreshInterval`: How often to refresh cached entries in minutes (`0` disables background refresh).
 
 ##### Basic usage with default options except refresh interval:
 
 ```go
-// refresh items every 5 minutes
+// refresh cached hosts every 5 minutes
 resolver := dnscache.New(5)
 ```
 
 ##### Advanced usage with custom options:
 
 ```go
-// refresh items every 10 minutes, use custom resolver, and retry 5 times
+// refresh items every 10 minutes, use custom resolver, and retry each
+// lookup up to 5 times, using 2 DNS servers:
 resolver := dnscache.NewWithOptions(dnscache.TResolverOptions{
+	DNSservers:      []string{"8.8.8.8", "8.8.4.4"},
     CacheSize:       128,
     Resolver:        myCustomResolver,
     MaxRetries:      5,
