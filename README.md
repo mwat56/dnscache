@@ -22,6 +22,7 @@
 			- [2. Load Balancing with Random IP Selection](#2-load-balancing-with-random-ip-selection)
 			- [3. Microservice Communication with DNS Caching](#3-microservice-communication-with-dns-caching)
 			- [4. Graceful Shutdown](#4-graceful-shutdown)
+		- [Runtime Metrics](#runtime-metrics)
 	- [Libraries](#libraries)
 	- [Licence](#licence)
 
@@ -224,6 +225,32 @@ func shutdown() {
 
 	// Perform other cleanup...
 } // shutdown()
+```
+
+### Runtime Metrics
+
+The `dnscache` package provides metrics for monitoring the performance and health of the DNS cache. The metrics can be accessed through the `Metrics()` method of the `TResolver` instance:
+
+```go
+metrics := resolver.Metrics()
+```
+
+The metrics are returned as a `*TMetrics` struct, which provides the following fields:
+
+- `Lookups`: Total number of DNS lookups,
+- `Hits`: Number of cache hits,
+- `Misses`: Number of cache misses,
+- `Retries`: Number of lookup retries,
+- `Errors`: Number of lookup errors,
+- `Peak`: Peak number of cached entries.
+
+The field values are a snapshot of the current state at the time of requesting the metrics and get updated atomically as the resolver does its work. In other words, the metrics may change while you are reading them. Hence, in case some sort of statistics are to be calculated, it is recommended to request the metrics data at regular intervals and then work with the respective snapshot.
+
+The metrics can be printed to the console using the `String()` method of the `TMetrics` struct:
+
+```go
+metrics := resolver.Metrics()
+fmt.Println(metrics.String())
 ```
 
 ## Libraries

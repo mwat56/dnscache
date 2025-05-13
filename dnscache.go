@@ -87,14 +87,16 @@ func New(aRefreshInterval uint8) *TResolver {
 //   - `*Resolver`: A new `Resolver` instance.
 func NewWithOptions(aOptions TResolverOptions) *TResolver {
 	optServers := aOptions.DNSservers
-	if (nil == optServers) || (0 == len(optServers)) {
+	if 0 == len(optServers) {
+		// Use system default DNS servers
 		var err error
 		if optServers, err = getDNSServers(); (nil != err) ||
 			(0 == len(optServers)) {
 			optServers = nil
 		}
 	} else {
-		// Check whether the provided DNS servers are valid
+		// Check whether the provided DNS servers are valid,
+		// and remove invalid entries from the list
 		c := slices.Clone(optServers)
 		for i, server := range c {
 			if nil == net.ParseIP(server) {
@@ -103,7 +105,10 @@ func NewWithOptions(aOptions TResolverOptions) *TResolver {
 			}
 		}
 		c = nil // free memory
+
 		if 0 == len(optServers) {
+			// Use system default DNS servers because
+			// the provided list was invalid
 			var err error
 			if optServers, err = getDNSServers(); (nil != err) ||
 				(0 == len(optServers)) {
@@ -198,9 +203,12 @@ func (r *TResolver) Fetch(aHostname string) ([]net.IP, error) {
 	r.mtx.RUnlock()
 
 	if ok && (0 < len(ips)) {
+		incMetricsFields(&gMetrics.Lookups, &gMetrics.Hits)
+
 		// fast path: we've already resolved this hostname
 		return ips, nil
 	}
+	incMetricsFields(&gMetrics.Misses)
 
 	// Use a context with timeout for the entire refresh operation
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*5)
@@ -271,7 +279,7 @@ func (r *TResolver) FetchRandom(aHostname string) (net.IP, error) {
 
 	idx := 0
 	if 0 < len(ips) {
-		idx = rand.Intn(len(ips))
+		idx = rand.Intn(len(ips)) //#nosec G404
 	}
 
 	return ips[idx], nil
@@ -311,13 +319,13 @@ func (r *TResolver) lookup(aCtx context.Context, aHostname string) (rIPs []net.I
 	if nil != r.dnsServers {
 		for _, server := range r.dnsServers {
 			if rIPs, rErr = lookupDNS(aCtx, server, aHostname); nil == rErr {
-				return // Lookup succeeded
+				return // lookup succeeded
 			}
 		}
 	}
 
 	if rIPs, rErr = r.resolver.LookupIP(aCtx, "ip", aHostname); nil == rErr {
-		return // Lookup succeeded
+		return // lookup succeeded
 	}
 
 	// Check if it's a "not found" DNS error
@@ -350,35 +358,58 @@ func (r *TResolver) Lookup(aCtx context.Context, aHostname string) ([]net.IP, er
 		// Check if context is done before each attempt
 		select {
 		case <-aCtx.Done():
+			// No metrics data to update yet
 			return nil, aCtx.Err()
+
 		default:
 			// Continue with lookup
 		}
 
 		if ips, err = r.lookup(aCtx, aHostname); nil == err {
-			break // Lookup succeeded
+			// Update metrics
+			if 0 < loop {
+				incMetricsFields(&gMetrics.Retries)
+			}
+			break // lookup succeeded
 		}
 
 		// Short delay before retry, respecting context
 		select {
 		case <-aCtx.Done():
+			if 0 < loop {
+				incMetricsFields(&gMetrics.Retries)
+			}
 			return nil, aCtx.Err()
+
 		default:
 			runtime.Gosched() // yield to other goroutines
 		}
 	} // for loop
 
 	if nil != err {
+		incMetricsFields(&gMetrics.Lookups, &gMetrics.Errors)
 		return nil, err
 	}
+
+	// Update metrics
+	incMetricsFields(&gMetrics.Lookups)
 
 	// Cache the result
 	r.mtx.Lock()
 	r.tCacheList[aHostname] = ips
+	setMetricsFieldMax(&gMetrics.Peak, uint32(len(r.tCacheList))) //#nosec G115
 	r.mtx.Unlock()
 
 	return ips, nil
 } // Lookup()
+
+// `Metrics()` returns the current metrics data.
+//
+// Returns:
+//   - `*TMetrics`: Current metrics data.
+func (r *TResolver) Metrics() (rMetrics *TMetrics) {
+	return gMetrics.clone()
+} // Metrics()
 
 // `Refresh()` resolves all cached hostnames and updates the cache.
 //
