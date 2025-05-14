@@ -18,34 +18,7 @@ import (
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
-// type (
-// 	// `tDefaultResolver` is the resolver used by the package-level
-// 	// Lookup functions.
-
-// 	tDefaultResolver struct {
-// 		*net.Resolver
-// 	}
-// )
-
-// func (r *tDefaultResolver) Dial(ctx context.Context, aNetType, aHostname string) (net.Conn, error) {
-
-// 	dialer := net.Dialer{
-// 		Timeout: time.Second * 3,
-// 	}
-
-// 	if "udp" == aNetType || "tcp" == aNetType {
-// 		return dialer.DialContext(ctx, aNetType, aServer+":53")
-// 	}
-
-// 	return nil, fmt.Errorf("unsupported network: %s", aNetType)
-// } // Dial()
-
-// func (r *tDefaultResolver) preferGo() bool { return r != nil && r.PreferGo }
-
-// func (r *tDefaultResolver) strictErrors() bool { return r != nil && r.StrictErrors }
-
-// // DefaultResolver is the resolver used by the package-level Lookup functions.
-// var DefaultResolver = &net.Resolver{}
+// ---------------------------------------------------------------------------
 
 // `getDNSServers()` reads the DNS servers from `/etc/resolv.conf`.
 //
