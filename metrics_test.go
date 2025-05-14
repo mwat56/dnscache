@@ -7,11 +7,94 @@ Copyright © 2025  M.Watermann, 10247 Berlin, Germany
 package dnscache
 
 import (
-	"reflect"
 	"testing"
 )
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
+
+func Test_TMetrics_check(t *testing.T) {
+	tests := []struct {
+		name    string
+		metrics *TMetrics
+		correct bool
+		want    bool
+	}{
+		{
+			name: "consistent",
+			metrics: &TMetrics{
+				Lookups: 10,
+				Hits:    7,
+				Misses:  3,
+				Retries: 2,
+				Errors:  1,
+				Peak:    8,
+			},
+			correct: false,
+			want:    true,
+		},
+		{
+			name:    "nil",
+			metrics: nil,
+			correct: true,
+			want:    true,
+		},
+		{
+			name:    "empty",
+			metrics: &TMetrics{},
+			correct: true,
+			want:    true,
+		},
+		{
+			name: "lookups < hits + misses",
+			metrics: &TMetrics{
+				Lookups: 10,
+				Hits:    7,
+				Misses:  4,
+				Retries: 2,
+				Errors:  1,
+				Peak:    8,
+			},
+			correct: false,
+			want:    false,
+		},
+		{
+			name: "lookups < hits + misses (correct)",
+			metrics: &TMetrics{
+				Lookups: 10,
+				Hits:    7,
+				Misses:  4,
+				Retries: 2,
+				Errors:  1,
+				Peak:    8,
+			},
+			correct: true,
+			want:    false,
+		},
+		{
+			name: "lookups > hits + misses (correct)",
+			metrics: &TMetrics{
+				Lookups: 10,
+				Hits:    7,
+				Misses:  2,
+				Retries: 2,
+				Errors:  1,
+				Peak:    8,
+			},
+			correct: true,
+			want:    false,
+		},
+
+		// TODO: Add test cases.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.metrics.check(tc.correct); got != tc.want {
+				t.Errorf("TMetrics.check() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+} // Test_TMetrics_check()
 
 func Test_TMetrics_clone(t *testing.T) {
 	tests := []struct {
@@ -23,7 +106,7 @@ func Test_TMetrics_clone(t *testing.T) {
 			name: "all zero",
 			setup: func() {
 				// Reset metrics
-				gMetrics = &TMetrics{}
+				gMetrics = new(TMetrics)
 			},
 			wantRMetrics: &TMetrics{
 				Lookups: 0,
@@ -64,6 +147,7 @@ func Test_TMetrics_clone(t *testing.T) {
 
 		// TODO: Add test cases.
 	}
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.setup()
@@ -74,8 +158,9 @@ func Test_TMetrics_clone(t *testing.T) {
 				return
 			}
 
-			if !reflect.DeepEqual(gotRMetrics, tc.wantRMetrics) {
-				t.Errorf("GetMetrics() = %v, want %v", gotRMetrics, tc.wantRMetrics)
+			if !tc.wantRMetrics.Equal(gotRMetrics) {
+				t.Errorf("GetMetrics() = %v, want %v",
+					gotRMetrics, tc.wantRMetrics)
 			}
 		})
 	}
@@ -83,13 +168,13 @@ func Test_TMetrics_clone(t *testing.T) {
 
 func Test_TMetrics_String(t *testing.T) {
 	tests := []struct {
-		name   string
-		fields TMetrics
-		want   string
+		name    string
+		metrics TMetrics
+		want    string
 	}{
 		{
 			name: "all zero",
-			fields: TMetrics{
+			metrics: TMetrics{
 				Lookups: 0,
 				Hits:    0,
 				Misses:  0,
@@ -101,7 +186,7 @@ func Test_TMetrics_String(t *testing.T) {
 		},
 		{
 			name: "all non-zero",
-			fields: TMetrics{
+			metrics: TMetrics{
 				Lookups: 10,
 				Hits:    7,
 				Misses:  3,
@@ -114,17 +199,10 @@ func Test_TMetrics_String(t *testing.T) {
 
 		// TODO: Add test cases.
 	}
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			m := &TMetrics{
-				Lookups: tc.fields.Lookups,
-				Hits:    tc.fields.Hits,
-				Misses:  tc.fields.Misses,
-				Retries: tc.fields.Retries,
-				Errors:  tc.fields.Errors,
-				Peak:    tc.fields.Peak,
-			}
-			if got := m.String(); got != tc.want {
+			if got := tc.metrics.String(); got != tc.want {
 				t.Errorf("TMetrics.String() =\n%q\nwant\n%q",
 					got, tc.want)
 			}

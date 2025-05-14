@@ -36,11 +36,11 @@ type (
 )
 
 var (
-	// `gMetrics` is the global metrics instance that is used
-	// to store current metrics data.
+	// `gMetrics` is the global metrics instance that
+	// is used to store the current metrics data.
 	//
-	// This variable should be considered a R/O singleton.
-	gMetrics = &TMetrics{}
+	// NOTE: This variable should be considered R/O.
+	gMetrics = new(TMetrics)
 )
 
 // ---------------------------------------------------------------------------
@@ -53,13 +53,13 @@ var (
 //     `false` to just check for them.
 //
 // Returns:
-//   - `int`: `0` if the metrics data is consistent,
-//     `1` if the metrics data is `nil`,
-//     `2` if the number of lookups is less than the sum of hits and misses,
-//     `3` if the peak number of cached entries is less than the number of hits.
-func (m *TMetrics) check(aCorrect bool) int {
+//   - `bool`: `true` if the metrics data is consistent, `false` otherwise.
+func (m *TMetrics) check(aCorrect bool) bool {
 	if nil == m {
-		return 1
+		if aCorrect {
+			gMetrics = new(TMetrics)
+		}
+		return true
 	}
 
 	if m.Lookups != (m.Hits + m.Misses) {
@@ -70,17 +70,10 @@ func (m *TMetrics) check(aCorrect bool) int {
 				setMetricsFieldMax(&m.Hits, m.Lookups-m.Misses)
 			}
 		}
-		return 2
+		return false
 	}
 
-	if m.Peak < m.Hits {
-		if aCorrect {
-			setMetricsFieldMax(&m.Peak, m.Hits)
-		}
-		return 3
-	}
-
-	return 0
+	return true
 } // check()
 
 // `clone()` returns the current metrics data.
@@ -98,6 +91,29 @@ func (m *TMetrics) clone() *TMetrics {
 	}
 } // clone()
 
+// `Equal()` checks whether the metrics data is equal to the given one.
+//
+// Parameters:
+//   - `aMetrics`: Metrics data to compare with.
+//
+// Returns:
+//   - `bool`: `true` if the metrics data is equal to the given one, `false` otherwise.
+func (m *TMetrics) Equal(aMetrics *TMetrics) bool {
+	if nil == m {
+		return (nil == aMetrics)
+	}
+	if nil == aMetrics {
+		return false
+	}
+
+	return (m.Lookups == aMetrics.Lookups) &&
+		(m.Hits == aMetrics.Hits) &&
+		(m.Misses == aMetrics.Misses) &&
+		(m.Retries == aMetrics.Retries) &&
+		(m.Errors == aMetrics.Errors) &&
+		(m.Peak == aMetrics.Peak)
+} // Equal()
+
 // `String()` implements the `fmt.Stringer` interface for the metrics data.
 //
 // Returns:
@@ -106,8 +122,8 @@ func (m *TMetrics) String() string {
 	if nil == m {
 		return ""
 	}
-	if err := m.check(true); 0 != err {
-		return fmt.Sprintf("invalid metrics data (err %d)", err)
+	if ok := m.check(true); !ok {
+		return "invalid metrics data"
 	}
 
 	var builder strings.Builder
