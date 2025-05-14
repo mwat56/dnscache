@@ -9,7 +9,6 @@ package dnscache
 import (
 	"context"
 	"errors"
-	"maps"
 	"math/rand"
 	"net"
 	"runtime"
@@ -20,25 +19,40 @@ import (
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
-type (
-	// `tCacheList` is a map of DNS cache entries.
-	tCacheList map[string][]net.IP
+const (
+	// `defCacheSize` is the default size of the cache list.
+	defCacheSize = 64
 
-	// `TResolverOptions` contains options for creating a resolver.
+	// `defExpireInterval` is the default interval at which expired cache entries are removed from the cache.
+	defExpireInterval = uint8(1 << 4) // 16 minutes
+
+	// `defRetries` is the default number of retries for DNS lookups.
+	defRetries = 3
+
+	// `defTTL` is the default time to live for a DNS cache entry.
+	defTTL = time.Duration(time.Minute << 6) // 64 minutes
+)
+
+type (
+	// `TResolverOptions` contain configuration options for creating a resolver.
 	//
 	// This are the public fields to configure a new `TResolver` instance:
 	//
 	//   - `DNSservers`: List of DNS servers to use, `nil` means use system default.
 	//   - `CacheSize`: Initial cache size, `0` means use default (`64`).
 	//   - `Resolver`: Custom resolver, `nil` means use default.
+	//   - `ExpireInterval`: Optional interval (in minutes) to remove expired cache entries.
 	//   - `MaxRetries`: Maximum number of retries for DNS lookup, `0` means use default (`3`).
-	//   - `RefreshInterval`: Optional interval in minutes to refresh the cache.
+	//   - `RefreshInterval`: Optional interval (in minutes) to refresh the cache.
+	//   - `TTL`: Optional time to live (in minutes) for cache entries.
 	TResolverOptions struct {
 		DNSservers      []string
 		CacheSize       int
 		Resolver        *net.Resolver
+		ExpireInterval  uint8
 		MaxRetries      uint8
 		RefreshInterval uint8
+		TTL             uint8
 	}
 
 	// `TResolver` is a DNS resolver with an optional background refresh.
@@ -46,12 +60,14 @@ type (
 	// It embeds a map of DNS cache entries to store the DNS cache entries
 	// and uses a Mutex to synchronise access to that cache.
 	TResolver struct {
-		mtx        sync.RWMutex
-		dnsServers []string
-		abort      chan struct{} // signal to abort `autoRefresh()`
-		resolver   *net.Resolver
-		tCacheList
-		retries uint8
+		mtx          sync.RWMutex
+		dnsServers   []string
+		abortExpire  chan struct{} // signal to abort `autoExpire()`
+		abortRefresh chan struct{} // signal to abort `autoRefresh()`
+		resolver     *net.Resolver // DNS resolver to use
+		tCacheList                 //list of DNS cache entries
+		ttl          time.Duration // TTL for cache entries
+		retries      uint8         // max. number of retries for DNS lookups
 	}
 )
 
@@ -70,10 +86,6 @@ type (
 //   - `*Resolver`: A new `Resolver` instance.
 func New(aRefreshInterval uint8) *TResolver {
 	return NewWithOptions(TResolverOptions{
-		// DNSservers:      nil, // use default
-		// CacheSize:       0,   // use default
-		// Resolver:        nil, // use default
-		// MaxRetries:      0,   // use default
 		RefreshInterval: aRefreshInterval,
 	})
 } // New()
@@ -119,7 +131,7 @@ func NewWithOptions(aOptions TResolverOptions) *TResolver {
 
 	optCacheSize := aOptions.CacheSize
 	if 0 >= optCacheSize {
-		optCacheSize = 64 // use default
+		optCacheSize = defCacheSize
 	}
 
 	optResolver := aOptions.Resolver
@@ -129,19 +141,37 @@ func NewWithOptions(aOptions TResolverOptions) *TResolver {
 
 	optRetries := aOptions.MaxRetries
 	if 0 == optRetries {
-		optRetries = 3 // use default
+		optRetries = defRetries
 	}
 
 	result := &TResolver{
-		dnsServers: optServers,
-		abort:      make(chan struct{}),
-		resolver:   optResolver,
-		tCacheList: make(tCacheList, optCacheSize),
-		retries:    optRetries,
+		dnsServers:   optServers,
+		abortExpire:  make(chan struct{}),
+		abortRefresh: make(chan struct{}),
+		resolver:     optResolver,
+		tCacheList:   make(tCacheList, optCacheSize),
+		retries:      optRetries,
+	}
+
+	if optTTL := aOptions.TTL; 0 == optTTL {
+		result.ttl = defTTL
+	} else {
+		result.ttl = time.Minute * time.Duration(optTTL)
 	}
 
 	if 0 < aOptions.RefreshInterval {
-		go result.autoRefresh(time.Minute * time.Duration(aOptions.RefreshInterval))
+		// Start the auto-refresh goroutine.
+		go result.autoRefresh(time.Minute*time.Duration(aOptions.RefreshInterval), result.abortRefresh)
+		runtime.Gosched() // yield to the new goroutine
+	}
+
+	optExpireInterval := aOptions.ExpireInterval
+	if 0 == optExpireInterval {
+		optExpireInterval = defExpireInterval
+	}
+	if 0 < optExpireInterval {
+		// Start the auto-expire goroutine.
+		go result.tCacheList.autoExpire(time.Minute*time.Duration(optExpireInterval), result.abortExpire)
 		runtime.Gosched() // yield to the new goroutine
 	}
 
@@ -155,7 +185,8 @@ func NewWithOptions(aOptions TResolverOptions) *TResolver {
 //
 // Parameters:
 //   - `aRate`: Time interval to refresh the cache.
-func (r *TResolver) autoRefresh(aRate time.Duration) {
+//   - `aAbort`: Channel to receive a signal to abort.
+func (r *TResolver) autoRefresh(aRate time.Duration, aAbort chan struct{}) {
 	ticker := time.NewTicker(aRate)
 	defer ticker.Stop()
 
@@ -164,30 +195,14 @@ func (r *TResolver) autoRefresh(aRate time.Duration) {
 		case <-ticker.C:
 			r.Refresh()
 
-		case <-r.abort:
+		case <-aAbort:
 			return
+
+		default:
+			runtime.Gosched() // yield to other goroutines
 		}
 	}
 } // autoRefresh()
-
-// `Close()` stops the background refresh goroutine if it's running.
-//
-// This method should be called when the background updates are no
-// longer needed. The resolver remains usable after calling Close(),
-// but cached entries will no longer be automatically refreshed.
-func (r *TResolver) Close() {
-	select {
-	case r.abort <- struct{}{}:
-		// Signal sent successfully
-		runtime.Gosched()
-	default:
-		// Channel already closed or no goroutine listening
-		return
-	}
-
-	// Note: We don't clear the cache here as the resolver
-	// remains usable, and cached entries are still valid
-} // Close()
 
 // `Fetch()` returns the IP addresses for a given hostname.
 //
@@ -199,7 +214,7 @@ func (r *TResolver) Close() {
 //   - `error`: `nil` if the hostname was resolved successfully, the error otherwise.
 func (r *TResolver) Fetch(aHostname string) ([]net.IP, error) {
 	r.mtx.RLock()
-	ips, ok := r.tCacheList[aHostname]
+	ips, ok := r.tCacheList.ips(aHostname)
 	r.mtx.RUnlock()
 
 	if ok && (0 < len(ips)) {
@@ -396,8 +411,8 @@ func (r *TResolver) Lookup(aCtx context.Context, aHostname string) ([]net.IP, er
 
 	// Cache the result
 	r.mtx.Lock()
-	r.tCacheList[aHostname] = ips
-	setMetricsFieldMax(&gMetrics.Peak, uint32(len(r.tCacheList))) //#nosec G115
+	r.tCacheList.setEntry(aHostname, ips, r.ttl)
+	setMetricsFieldMax(&gMetrics.Peak, uint32(r.tCacheList.len())) //#nosec G115
 	r.mtx.Unlock()
 
 	return ips, nil
@@ -429,16 +444,16 @@ func (r *TResolver) Refresh() {
 	r.mtx.RLock()
 	// This is a shallow clone, the new keys and values
 	// are set using ordinary assignment:
-	hosts := maps.Clone(r.tCacheList)
+	hosts := r.tCacheList.clone()
 	r.mtx.RUnlock()
 
-	for host := range hosts {
+	for hostname := range *hosts {
 		select {
 		case <-ctx.Done():
 			return // Context timeout or cancellation
 		case <-limiter.C:
 			// Lookup the hostname:
-			_, err := r.Lookup(ctx, host)
+			_, err := r.Lookup(ctx, hostname)
 			if nil != err {
 				if errors.As(err, &dnsErr) {
 					if dnsErr.IsNotFound {
@@ -446,7 +461,7 @@ func (r *TResolver) Refresh() {
 						// of the cache, but we delete the non-existing
 						// host from our original cache:
 						r.mtx.Lock()
-						delete(r.tCacheList, host)
+						r.tCacheList.delete(hostname)
 						r.mtx.Unlock()
 					}
 				}
@@ -455,5 +470,40 @@ func (r *TResolver) Refresh() {
 		}
 	}
 } // Refresh()
+
+// `StopExpire()` stops the background expiration goroutine if it's running.
+//
+// This method should be called when the background expirations are no
+// longer needed. The resolver remains usable after calling `StopExpire()“,
+// but cached entries will no longer be automatically expired.
+func (r *TResolver) StopExpire() {
+	select {
+	case r.abortExpire <- struct{}{}:
+		// Signal sent successfully
+		runtime.Gosched()
+	default:
+		// Channel already closed or no goroutine listening
+		return
+	}
+} // StopExpire()
+
+// `StopRefresh()` stops the background refresh goroutine if it's running.
+//
+// This method should be called when the background updates are no
+// longer needed. The resolver remains usable after calling `StopRefresh()“,
+// but cached entries will no longer be automatically refreshed.
+func (r *TResolver) StopRefresh() {
+	select {
+	case r.abortRefresh <- struct{}{}:
+		// Signal sent successfully
+		runtime.Gosched()
+	default:
+		// Channel already closed or no goroutine listening
+		return
+	}
+
+	// Note: We don't clear the cache here as the resolver
+	// remains usable, and cached entries are still valid
+} // StopRefresh()
 
 /* _EoF_ */

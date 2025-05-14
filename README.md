@@ -19,7 +19,7 @@
 				- [Advanced usage with custom options:](#advanced-usage-with-custom-options)
 		- [Example Use Cases](#example-use-cases)
 			- [1. HTTP Client with DNS Caching](#1-http-client-with-dns-caching)
-			- [2. Load Balancing with Random IP Selection](#2-load-balancing-with-random-ip-selection)
+			- [2. Load Balancing by Random IP Selection](#2-load-balancing-by-random-ip-selection)
 			- [3. Microservice Communication with DNS Caching](#3-microservice-communication-with-dns-caching)
 			- [4. Graceful Shutdown](#4-graceful-shutdown)
 		- [Runtime Metrics](#runtime-metrics)
@@ -52,7 +52,7 @@ go get github.com/mwat56/dnscache
 The cache is thread safe. Create a new instance by specifying how long each entry should be cached (in minutes). IPs can be refreshed in the background; the default refresh interval is `0` (disabled). The default number of lookup retries is `3`.
 
 ```go
-// refresh items every 5 minutes
+// Refresh items every 5 minutes
 resolver := dnscache.New(5)
 
 // get an array of net.IP
@@ -74,37 +74,47 @@ type TResolverOptions struct {
 	DNSservers      []string
 	CacheSize       int
 	Resolver        *net.Resolver
+	ExpireInterval  uint8
 	MaxRetries      uint8
 	RefreshInterval uint8
+	TTL             uint8
 }
 ```
 
 #### Available Options
 
 - `DNSservers`: List of DNS servers to use, `nil` means use system default.
-- `CacheSize`: Initial size of the DNS cache (default: `64`),
-- `Resolver`: Custom DNS resolver to use (default: `net.DefaultResolver`),
-- `MaxRetries`: Maximum number of retry attempts for DNS lookups (default: `3`),
-- `RefreshInterval`: How often to refresh cached entries in minutes (`0` disables background refresh).
+- `CacheSize`: Initial size of the DNS cache, `0` means use default ( `64`)
+- `Resolver`: Custom DNS resolver to use, `nil` means use default (`net.DefaultResolver`)
+- `ExpireInterval`: How often to remove expired entries in minutes (`0` disables background expiration).
+- `MaxRetries`: Maximum number of retry attempts for DNS lookups, `0` means use default (`3`).
+- `RefreshInterval`: How often to refresh cached entries in minutes, `0` disables background refresh.
+- `TTL`: Time to live for cache entries in minutes, `0` means use default (`64`).
+
+One may use any of the options or just a subset of them – every option has a default value to use if not explicitly specified.
 
 ##### Basic usage with default options except refresh interval:
 
 ```go
-// refresh cached hosts every 5 minutes
+// Refresh cached hosts every 5 minutes
 resolver := dnscache.New(5)
 ```
+
+This way is probably the most common practice to create a resolver. It uses all default values except for the refresh interval.
 
 ##### Advanced usage with custom options:
 
 ```go
-// refresh items every 10 minutes, use custom resolver, and retry each
-// lookup up to 5 times, using 2 DNS servers:
+// Refresh items every 10 minutes, use a custom resolver, and retry each
+// lookup up to 5 times, using 2 DNS servers while assigning each lookup
+// result a TTL of 16 minutes:
 resolver := dnscache.NewWithOptions(dnscache.TResolverOptions{
 	DNSservers:      []string{"8.8.8.8", "8.8.4.4"},
-    CacheSize:       128,
-    Resolver:        myCustomResolver,
-    MaxRetries:      5,
-    RefreshInterval: 10,
+	CacheSize:       128,
+	Resolver:        myCustomResolver,
+	MaxRetries:      5,
+	RefreshInterval: 10,
+	TTL:             16,
 })
 ```
 
@@ -148,7 +158,7 @@ if nil != err {
 defer response.Body.Close()
 ```
 
-#### 2. Load Balancing with Random IP Selection
+#### 2. Load Balancing by Random IP Selection
 
 Distribute connections across multiple IPs for a single hostname:
 
@@ -178,8 +188,8 @@ func connectToService(aService string) (net.Conn, error) {
 Improve inter-service communication in a microservice architecture:
 
 ```go
-// Create a DNS resolver with 5-minute refresh
-resolver := dnscache.New(5)
+// Create a DNS resolver with 3-minute refresh
+resolver := dnscache.New(3)
 
 // Service discovery function
 func getServiceEndpoint(aServiceName string) (string, error) {
@@ -221,7 +231,9 @@ resolver := dnscache.New(10)
 // When shutting down
 func shutdown() {
 	// Stop background refresh goroutine
-	resolver.Close()
+	resolver.StopRefresh()
+	// Stop background expiration goroutine
+	resolver.StopExpire()
 
 	// Perform other cleanup...
 } // shutdown()
@@ -232,6 +244,12 @@ func shutdown() {
 The `dnscache` package provides metrics for monitoring the performance and health of the DNS cache. The metrics can be accessed through the `Metrics()` method of the `TResolver` instance:
 
 ```go
+// Create a DNS resolver with background refresh
+resolver := dnscache.New(10)
+
+// … do some work …
+
+// Get the current metrics data
 metrics := resolver.Metrics()
 ```
 
@@ -250,6 +268,7 @@ The metrics can be printed to the console using the `String()` method of the `TM
 
 ```go
 metrics := resolver.Metrics()
+// … do some analysing …
 fmt.Println(metrics.String())
 ```
 
