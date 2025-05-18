@@ -53,31 +53,29 @@ type (
 // --------------------------------------------------------------------------
 // internal node pool functionality:
 
-var (
-	// `nodePool` is an internal pool of `tNode` instances.
-	nodePool = sync.Pool{
-		New: func() any {
-			return &tNode{tChildren: make(tChildren)}
-		},
-	} // postPool
-)
-
-// `init()` pre-allocates some nodes for the pool.
-func init() {
-	for range 255 {
-		nodePool.Put(&tNode{tChildren: make(tChildren)})
-	}
-} // init()
-
-// `putNode()` returns a node to the pool.
-//
-// Parameters:
-//   - `aPost`: The node to return to the pool.
-func putNode(aNode *tNode) {
-	// We can't clear the fields yet since it might
-	// still be used by another list or goroutine.
-	nodePool.Put(aNode)
-} // putNode()
+// var (
+// 	// `nodePool` is an internal pool of `tNode` instances.
+// 	nodePool = sync.Pool{
+// 		New: func() any {
+// 			return &tNode{tChildren: make(tChildren)}
+// 		},
+// 	} // postPool
+// )
+// // `init()` pre-allocates some nodes for the pool.
+// func init() {
+// 	for range 255 {
+// 		nodePool.Put(&tNode{tChildren: make(tChildren)})
+// 	}
+// } // init()
+// // `putNode()` returns a node to the pool.
+// //
+// // Parameters:
+// //   - `aPost`: The node to return to the pool.
+// func putNode(aNode *tNode) {
+// 	// We can't clear the fields yet since it might
+// 	// still be used by another list or goroutine.
+// 	nodePool.Put(aNode)
+// } // putNode()
 
 // ---------------------------------------------------------------------------
 // `tPartsList` methods:
@@ -113,25 +111,23 @@ func (pl tPartsList) String() string {
 
 // ---------------------------------------------------------------------------
 // `tNode` constructor:
-
-// `newNode()` creates a new `tNode` instance.
-//
-// Returns:
-//   - `*tNode`: A new `tNode` instance.
-func newNode() (rNode *tNode) {
-	var ok bool
-	if rNode, ok = nodePool.Get().(*tNode); ok {
-		// Clear/reset the old field values
-		if 0 < len(rNode.tChildren) {
-			rNode.tChildren = make(tChildren)
-		}
-		rNode.hits, rNode.isEnd, rNode.isWild = 0, false, false
-	} else {
-		rNode = &tNode{tChildren: make(tChildren)}
-	}
-
-	return
-} // newNode()
+// // `newNode()` creates a new `tNode` instance.
+// //
+// // Returns:
+// //   - `*tNode`: A new `tNode` instance.
+// func newNode() (rNode *tNode) {
+// 	var ok bool
+// 	if rNode, ok = nodePool.Get().(*tNode); ok {
+// 		// Clear/reset the old field values
+// 		if 0 < len(rNode.tChildren) {
+// 			rNode.tChildren = make(tChildren)
+// 		}
+// 		rNode.hits, rNode.isEnd, rNode.isWild = 0, false, false
+// 	} else {
+// 		rNode = &tNode{tChildren: make(tChildren)}
+// 	}
+// 	return
+// } // newNode()
 
 // ---------------------------------------------------------------------------
 // `tNode` methods:
@@ -369,35 +365,6 @@ func (n *tNode) Hits() uint32 {
 //
 // Returns:
 //   - `bool`: `true` if the pattern is in the node's trie, `false` otherwise.
-
-// func (n *tNode) match(aPartsList tPartsList, aDepth int) bool {
-// 	if (nil == n) || (0 == len(aPartsList)) {
-// 		return false
-// 	}
-// 	if aDepth >= len(aPartsList) {
-// 		// We are at the end of the patterns to check
-// 		// and found the final target node
-// 		if n.isWild {
-// 			return true
-// 		}
-// 		return n.isEnd
-// 	}
-// 	// First check for a wildcard match at the current level,
-// 	// then check for an exact match if there is no wildcard.
-// 	label := aPartsList[aDepth]
-// 	// Locking is done by the calling `tTrie`
-// 	child, ok := n.tChildren["*"]
-// 	if !ok {
-// 		child, ok = n.tChildren[label]
-// 	}
-// 	if !ok {
-// 		// No child with that name or wildcard
-// 		return false
-// 	}
-// 	// Recursively check the child node
-// 	return child.match(aPartsList, aDepth+1)
-// } // match()
-
 func (n *tNode) match(aPartsList tPartsList, aHitCounter bool) bool {
 	if (nil == n) || (0 == len(aPartsList)) {
 		return false
@@ -624,38 +591,6 @@ func (t *tTrie) AllPatterns() tPartsList {
 	if nil == t || nil == t.root || (0 == len(t.root.tChildren)) {
 		return tPartsList{}
 	}
-	// var (
-	// 	results, path tPartsList
-	// 	// walk          func(n *tNode, aPath tPartsList)
-	// )
-	// walk = func(n *tNode, aPath tPartsList) {
-	// 	// If this node marks an original pattern, collect it
-	// 	if n.isEnd || n.isWild {
-	// 		// Reverse the path to get the original FQDN order
-	// 		reversed := make(tPartsList, len(aPath))
-	// 		for idx, part := range aPath {
-	// 			reversed[len(aPath)-1-idx] = part
-	// 		}
-	// 		results = append(results, strings.Join(reversed, "."))
-	// 	}
-	// 	if 0 == len(n.tChildren) {
-	// 		return
-	// 	}
-	// 	// Collect and sort children kids
-	// 	kids := make(tPartsList, 0, len(n.tChildren))
-	// 	for label := range n.tChildren {
-	// 		kids = append(kids, label)
-	// 	}
-	// 	sort.Strings(kids)
-	// 	// Recurse into each child in sorted order
-	// 	for _, label := range kids {
-	// 		walk(n.tChildren[label], append(aPath, label))
-	// 	}
-	// }
-	// t.root.RLock()
-	// walk(t.root, path)
-	// t.root.RUnlock()
-	// return results
 
 	t.root.RLock()
 	results := t.root.allPatterns(tPartsList{})
