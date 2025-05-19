@@ -29,11 +29,11 @@ type (
 	// The node is a leaf node if `isEnd` is `true` and it's a wildcard
 	// node if `isWild` is `true`.
 	tNode struct {
-		sync.RWMutex        // barrier for concurrent access
-		tChildren           // children nodes
-		hits         uint32 // number of hits by `match()`
-		isEnd        bool   // `true` if the node is a leaf node
-		isWild       bool   // `true` if the node is a wildcard node
+		sync.RWMutex               // barrier for concurrent access
+		tChildren                  // children nodes
+		hits         atomic.Uint32 // number of hits by `match()`
+		isEnd        bool          // `true` if the node is a leaf node
+		isWild       bool          // `true` if the node is a wildcard node
 	}
 )
 
@@ -361,7 +361,7 @@ func (n *tNode) forEach(aFunc func(aNode *tNode)) {
 // Returns:
 //   - `uint32`: The number of hits on the node.
 func (n *tNode) Hits() uint32 {
-	return atomic.LoadUint32(&n.hits)
+	return n.hits.Load()
 } // Hits()
 
 // `load()` reads patterns from the reader and adds them to the node's tree.
@@ -455,7 +455,7 @@ func (n *tNode) match(aPartsList tPartsList, aHitCounter bool) bool {
 
 	if matched {
 		if aHitCounter {
-			atomic.AddUint32(&child.hits, 1)
+			child.hits.Add(1)
 		}
 
 		return true
@@ -582,7 +582,7 @@ func (n *tNode) string(aLabel string) string {
 		// print its details
 		if nil == entry.kids {
 			line := fmt.Sprintf("%q:\n%sisEnd: %v\n%sisWild: %v\n%shits: %d\n",
-				entry.name, indent, entry.node.isEnd, indent, entry.node.isWild, indent, entry.node.hits)
+				entry.name, indent, entry.node.isEnd, indent, entry.node.isWild, indent, entry.node.hits.Load())
 			builder.WriteString(line)
 
 			// Prepare sorted child keys

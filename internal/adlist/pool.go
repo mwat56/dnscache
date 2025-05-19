@@ -110,7 +110,9 @@ func (p *tPool) Get() any {
 //   - `rReturned`: Number of nodes returned to the pool.
 //   - `rSize`: Current number of items in the pool.
 func (p *tPool) Metrics() (rCreated, rReturned uint32, rSize int) {
-	rCreated, rReturned, rSize = p.created.Load(), p.returned.Load(), len(p.items)
+	rCreated, rReturned, rSize = p.created.Load(),
+		p.returned.Load(),
+		len(p.items)
 
 	return
 } // Metrics()
@@ -139,14 +141,6 @@ func (p *tPool) Put(x any) {
 	}
 } // Put()
 
-// // `Size()` returns the current number of items in the pool.
-// //
-// // Returns:
-// //   - `int`: Current number of items in the pool.
-// func (p *tPool) Size() int {
-// 	return len(p.items)
-// } // Size()
-
 // ---------------------------------------------------------------------------
 // `tNode` constructor:
 
@@ -161,7 +155,8 @@ func newNode() (rNode *tNode) {
 		if 0 < len(rNode.tChildren) {
 			rNode.tChildren = make(tChildren)
 		}
-		rNode.hits, rNode.isEnd, rNode.isWild = 0, false, false
+		rNode.hits.Store(0)
+		rNode.isEnd, rNode.isWild = false, false
 	} else {
 		rNode = &tNode{tChildren: make(tChildren)}
 	}
