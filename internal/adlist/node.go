@@ -93,7 +93,7 @@ func (n *tNode) add(aPartsList tPartsList) bool {
 	return (0 < depth) || (0 < ends)
 } // add()
 
-// `allPatterns()` recursively collects all hostname patterns in the
+// `allPatterns()` collects all hostname patterns in the node's tree.
 // node's tree.
 //
 // The patterns are returned in sorted order.
@@ -194,6 +194,72 @@ func (n *tNode) clone() *tNode {
 
 	return clone
 } // clone()
+
+// `count()` returns the number of nodes and patterns in the node's tree.
+//
+// Returns:
+//   - `rNodes`: The number of nodes in the node's tree.
+//   - `rPatterns`: The number of patterns in the node's tree.
+func (n *tNode) count() (rNodes, rPatterns int) {
+	if nil == n {
+		return
+	}
+	type (
+		tStackEntry struct {
+			node *tNode     // respective node to process
+			path tPartsList // path in the trie to the node
+		}
+	)
+	var (
+		cLen int
+		kids tPartsList
+	)
+	stack := []tStackEntry{
+		// Push the current node to the stack
+		{node: n, path: tPartsList{}},
+	}
+
+	for 0 < len(stack) {
+		// Pop the top of the stack
+		current := stack[len(stack)-1]
+		// Remove the top of the stack
+		stack = stack[:len(stack)-1]
+		rNodes++
+
+		// Check if current node is a terminal pattern
+		if current.node.isEnd || current.node.isWild {
+			rPatterns++
+		}
+
+		if cLen = len(current.node.tChildren); 0 == cLen {
+			continue
+		}
+
+		// Collect and sort children keys for deterministic order
+		kids = make(tPartsList, 0, cLen)
+		for label := range current.node.tChildren {
+			kids = append(kids, label)
+		}
+		if 1 < len(kids) {
+			sort.Strings(kids)
+		}
+
+		// Push children to stack in reverse-sorted order
+		// (to process them in forward order when popped)
+		for idx := len(kids) - 1; 0 <= idx; idx-- {
+			label := kids[idx]
+			newPath := make(tPartsList, len(current.path)+1)
+			copy(newPath, current.path)
+			newPath[len(current.path)] = label
+			stack = append(stack, tStackEntry{
+				node: current.node.tChildren[label],
+				path: newPath,
+			})
+		}
+	} // for stack
+
+	return
+} // count()
 
 // `delete()` removes path patterns from the node's tree.
 //
@@ -464,8 +530,18 @@ func (n *tNode) match(aPartsList tPartsList, aHitCounter bool) bool {
 	return false
 } // match()
 
-// `store()` writes all patterns currently in the list to the writer,
-// one per line.
+// `store()` writes all patterns currently in the node to the writer,
+// one hostname pattern per line.
+//
+// If `aWriter` returns an error during processing, the method stops
+// writing and returns that error to the caller.
+//
+// The method uses a stack to traverse the tree in a depth-first manner,
+// which is more efficient than a recursive approach. The patterns are
+// written in sorted order.
+//
+// The method is not thread-safe in itself but expects to be read-locked
+// by the calling `tTrie` instance.
 //
 // Parameters:
 //   - `aWriter`: The writer to write the patterns to.
@@ -521,7 +597,7 @@ func (n *tNode) store(aWriter io.Writer) error {
 
 		// Push children in reverse-sorted order for
 		// correct processing sequence
-		for idx := len(kids) - 1; idx >= 0; idx-- {
+		for idx := len(kids) - 1; 0 <= idx; idx-- {
 			label := kids[idx]
 			newPath := make(tPartsList, len(entry.path)+1)
 			copy(newPath, entry.path)

@@ -592,6 +592,133 @@ func Test_tNode_clone(t *testing.T) {
 	}
 } // Test_tNode_clone()
 
+func Test_tNode_count(t *testing.T) {
+	tests := []struct {
+		name         string
+		node         *tNode
+		wantNodes    int
+		wantPatterns int
+	}{
+		/* */
+		{
+			name:         "01 - nil node",
+			node:         nil,
+			wantNodes:    0,
+			wantPatterns: 0,
+		},
+		{
+			name:         "02 - empty node",
+			node:         newNode(),
+			wantNodes:    1,
+			wantPatterns: 0,
+		},
+		{
+			name: "03 - one pattern",
+			node: func() *tNode {
+				n := newNode()
+				n.add(tPartsList{"tld"})
+				return n
+			}(),
+			wantNodes:    1,
+			wantPatterns: 1,
+		},
+		{
+			name: "04 - two patterns",
+			node: func() *tNode {
+				n := newNode()
+				n.add(tPartsList{"tld"})
+				n.add(tPartsList{"tld", "domain"})
+				return n
+			}(),
+			wantNodes:    2,
+			wantPatterns: 2,
+		},
+		{
+			name: "05 - three patterns",
+			node: func() *tNode {
+				n := newNode()
+				n.add(tPartsList{"tld"})
+				n.add(tPartsList{"tld", "domain"})
+				n.add(tPartsList{"tld", "domain", "sub"})
+				return n
+			}(),
+			wantNodes:    4,
+			wantPatterns: 3,
+		},
+		{
+			name: "06 - two patterns incl. wildcard",
+			node: func() *tNode {
+				n := newNode()
+				n.add(tPartsList{"tld", "domain", "sub"})
+				n.add(tPartsList{"tld", "domain", "sub", "*"})
+				return n
+			}(),
+			wantNodes:    4,
+			wantPatterns: 2,
+		},
+		{
+			name: "07 - two patterns incl. wildcard and one more",
+			node: func() *tNode {
+				n := newNode()
+				n.add(tPartsList{"tld", "domain", "sub"})
+				n.add(tPartsList{"tld", "domain", "sub", "host", "*"})
+				return n
+			}(),
+			wantNodes:    5,
+			wantPatterns: 2,
+		},
+		/* */
+		// TODO: Add test cases.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			gotNodes, gotPatterns := tc.node.count()
+
+			if nil == tc.node {
+				if 0 != gotNodes {
+					t.Errorf("tNode.count() Nodes = %d, want %d",
+						gotNodes, 0)
+				}
+				if 0 != gotPatterns {
+					t.Errorf("tNode.count() Patterns = %d, want %d", gotPatterns, 0)
+				}
+				return
+			}
+			if 0 == gotNodes {
+				if 0 != tc.wantNodes {
+					t.Errorf("tNode.count() Nodes = %d, want %d",
+						gotNodes, tc.wantNodes)
+				}
+				return
+			}
+			if 0 == gotPatterns {
+				if 0 != tc.wantPatterns {
+					t.Errorf("tNode.count() Patterns = %d, want %d", gotPatterns, tc.wantPatterns)
+				}
+				return
+			}
+			if 0 == tc.wantNodes {
+				if 0 != gotNodes {
+					t.Errorf("tNode.count() Nodes = %d, want %d",
+						gotNodes, 0)
+				}
+				return
+			}
+			if 0 == tc.wantPatterns {
+				if 0 != gotPatterns {
+					t.Errorf("tNode.count() Patterns = %d, want %d", gotPatterns, 0)
+				}
+				return
+			}
+			if gotPatterns >= gotNodes {
+				t.Errorf("tNode.count() Patterns -ge Nodes: %d >= %d",
+					gotPatterns, gotNodes)
+			}
+		})
+	}
+} // Test_tNode_count()
+
 func Test_tNode_delete(t *testing.T) {
 	tests := []struct {
 		name  string
