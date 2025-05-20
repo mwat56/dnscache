@@ -8,6 +8,8 @@ package adlist
 
 import (
 	"io"
+	"os"
+	"strings"
 )
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
@@ -41,29 +43,28 @@ func newTrie() *tTrie {
 
 // `Add()` inserts an FQDN pattern (with optional wildcard) into the list.
 //
-// If `aPattern` is an empty string, the method returns `nil, false`.
+// If `aPattern` is an empty string, the method returns `false`.
 //
 // Parameters:
 //   - `aPattern`: The FQDN pattern to insert.
 //
 // Returns:
-//   - `*tTrie`: The updated trie.
-//   - `bool`: `true` if the pattern was added, `false` otherwise.
-func (t *tTrie) Add(aPattern string) (*tTrie, bool) {
+//   - `rOK`: `true` if the pattern was added, `false` otherwise.
+func (t *tTrie) Add(aPattern string) (rOK bool) {
 	if nil == t || nil == t.root {
-		return nil, false
+		return
 	}
 
 	parts := pattern2parts(aPattern)
 	if 0 == len(parts) {
-		return nil, false
+		return
 	}
 
 	t.root.Lock()
-	added := t.root.add(parts)
+	rOK = t.root.add(parts)
 	t.root.Unlock()
 
-	return t, added
+	return
 } // Add()
 
 // `AllPatterns()` returns all patterns in the trie.
@@ -93,27 +94,43 @@ func (t *tTrie) clone() *tTrie {
 	return clone
 } // clone()
 
+// `Count()` returns the number of nodes and patterns in the trie.
+//
+// Returns:
+//   - `rNodes`: The number of nodes in the trie.
+//   - `rPatterns`: The number of patterns in the trie.
+func (t *tTrie) Count() (rNodes, rPatterns int) {
+	if nil == t || nil == t.root {
+		return
+	}
+
+	t.root.RLock()
+	rNodes, rPatterns = t.root.count()
+	t.root.RUnlock()
+
+	return
+} // Count()
+
 // `Delete()` removes a pattern (FQDN or wildcard) from the list.
 //
-// The method returns the updated trie and a boolean value indicating
-// whether the pattern was found and deleted.
+// The method returns a boolean value indicating whether the pattern
+// was found and deleted.
 //
-// If `aPattern` is an empty string, the method returns `nil, false`.
+// If `aPattern` is an empty string, the method returns `false`.
 //
 // Parameters:
 //   - `aPattern`: The pattern to remove.
 //
 // Returns:
-//   - `*tTrie`: The updated trie.
 //   - `bool`: `true` if the pattern was found and deleted, `false` otherwise.
-func (t *tTrie) Delete(aPattern string) (*tTrie, bool) {
+func (t *tTrie) Delete(aPattern string) (rOK bool) {
 	if nil == t || nil == t.root {
-		return nil, false
+		return
 	}
 
 	parts := pattern2parts(aPattern) // reversed list of parts
 	if 0 == len(parts) {
-		return nil, false
+		return
 	}
 
 	// To delete an FQDN or wildcard entry from your trie-based list:
@@ -124,10 +141,10 @@ func (t *tTrie) Delete(aPattern string) (*tTrie, bool) {
 	// nodes that are not terminal and have no children).
 
 	t.root.Lock()
-	deleted := t.root.delete(parts)
+	rOK = t.root.delete(parts)
 	t.root.Unlock()
 
-	return t, deleted
+	return
 } // Delete()
 
 // `Equal()` checks whether the trie is equal to another one.
@@ -194,56 +211,54 @@ func (t *tTrie) ForEach(aFunc func(aNode *tNode)) {
 // or wildcard syntax, neither are the patterns checked for invalid
 // characters or invalid endings.
 //
-// The method returns the updated trie and an error, if any. If it returns
-// an error, the loading process has encountered a problem while reading
-// the patterns and the trie may have not loaded all patterns.
+// The method returns an error, if any. If it returns an error, the
+// loading process has encountered a problem while reading the patterns
+// and the trie may have not loaded all patterns.
 //
 // Parameters:
 //   - `aReader`: The reader to read the patterns from.
 //
 // Returns:
-//   - `*tTrie`: The updated trie.
 //   - `error`: `nil` if the patterns were read successfully, the error otherwise.
 //     see [Store]
-func (t *tTrie) Load(aReader io.Reader) (*tTrie, error) {
+func (t *tTrie) Load(aReader io.Reader) error {
 	if (nil == t) || (nil == t.root) || (nil == aReader) {
-		return t, ErrNodeNil
+		return ErrNodeNil
 	}
 
 	t.root.Lock()
 	err := t.root.load(aReader)
 	t.root.Unlock()
 
-	return t, err
+	return err
 } // Load()
 
 // `Match()` checks if the given hostname matches any pattern in the list.
 //
-// If aHostname is an empty string, the method returns `nil, false`.
+// If aHostname is an empty string, the method returns `false`.
 //
-// The given hostname is matched against the patterns in the list #
+// The given hostname is matched against the patterns in the list
 // in a case-insensitive manner.
 //
 // Parameters:
 //   - `aHostname`: The hostname to check.
 //
 // Returns:
-//   - `*tTrie`: The matching trie.
-//   - `bool`: `true` if the hostname matches any pattern, `false` otherwise.
-func (t *tTrie) Match(aHostname string) (*tTrie, bool) {
+//   - `rOK`: `true` if the hostname matches any pattern, `false` otherwise.
+func (t *tTrie) Match(aHostname string) (rOK bool) {
 	if nil == t || nil == t.root {
-		return nil, false
+		return
 	}
 	parts := pattern2parts(aHostname)
 	if 0 == len(parts) {
-		return nil, false
+		return
 	}
 
 	t.root.RLock()
-	ok := t.root.match(parts, true)
+	rOK = t.root.match(parts, true)
 	t.root.RUnlock()
 
-	return t, ok
+	return
 } // Match()
 
 // `Store()` writes all patterns currently in the list to the writer,
@@ -255,18 +270,50 @@ func (t *tTrie) Match(aHostname string) (*tTrie, bool) {
 // Returns:
 //   - `error`: `nil` if the patterns were written successfully, the error otherwise.
 //     see [Load]
-func (t *tTrie) Store(aWriter io.Writer) (rErr error) {
+func (t *tTrie) Store(aWriter io.Writer) error {
 	if (nil == t) || (nil == t.root) || (nil == aWriter) {
-		rErr = ErrNodeNil
-		return
+		return ErrNodeNil
 	}
 
 	t.root.RLock()
-	rErr = t.root.store(aWriter)
+	err := t.root.store(aWriter)
 	t.root.RUnlock()
 
-	return
+	return err
 } // Store()
+
+func (t *tTrie) store2file(aFilename string) error {
+	if (nil == t) || (nil == t.root) {
+		return ErrListNil
+	}
+	if aFilename = strings.TrimSpace(aFilename); 0 == len(aFilename) {
+		return nil
+	}
+
+	tmpName := aFilename + "~"
+	if _, err := os.Stat(tmpName); nil == err {
+		_ = os.Remove(tmpName)
+	}
+
+	file, err := os.Create(tmpName) //#nosec G304
+	if nil != err {
+		return err
+	}
+	defer file.Close()
+
+	t.root.RLock()
+	err = t.root.store(file)
+	t.root.RUnlock()
+
+	if nil != err {
+		_ = os.Remove(tmpName)
+	} else {
+		// Replace `aFilename` if it exists
+		_ = os.Rename(tmpName, aFilename)
+	}
+
+	return err
+} // store2file()
 
 // `String()` implements the `fmt.Stringer` interface for the trie.
 //
@@ -274,7 +321,7 @@ func (t *tTrie) Store(aWriter io.Writer) (rErr error) {
 //   - `string`: The string representation of the trie.
 func (t *tTrie) String() (rStr string) {
 	if (nil == t) || (nil == t.root) {
-		return ""
+		return ErrNodeNil.Error()
 	}
 	// var builder strings.Builder
 
@@ -293,33 +340,28 @@ func (t *tTrie) String() (rStr string) {
 //   - `aNewPattern`: The new pattern to replace the old one with.
 //
 // Returns:
-//   - `*tTrie`: The updated trie.
-//   - `bool`: `true` if the pattern was updated, `false` otherwise.
-func (t *tTrie) Update(aOldPattern, aNewPattern string) (*tTrie, bool) {
+//   - `rOK`: `true` if the pattern was updated, `false` otherwise.
+func (t *tTrie) Update(aOldPattern, aNewPattern string) (rOK bool) {
 	if nil == t || nil == t.root {
-		return nil, false
+		return
 	}
 	oldParts := pattern2parts(aOldPattern) // reversed list of parts
 	if 0 == len(oldParts) {
-		return nil, false
+		return
 	}
 	newParts := pattern2parts(aNewPattern)
 	if 0 == len(newParts) {
-		return nil, false
+		return
 	}
 	if oldParts.Equal(newParts) {
-		return nil, false
+		return
 	}
 
 	t.root.Lock()
-	updated := t.root.update(oldParts, newParts)
+	rOK = t.root.update(oldParts, newParts)
 	t.root.Unlock()
 
-	if updated {
-		return t, true
-	}
-
-	return nil, false
+	return
 } // Update()
 
 /* _EoF_ */

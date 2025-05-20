@@ -86,72 +86,48 @@ func Test_tTrie_Add(t *testing.T) {
 		name     string
 		trie     *tTrie
 		pattern  string
-		wantTrie *tTrie
 		wantBool bool
 	}{
 		{
 			name:     "01 - nil trie",
 			trie:     nil,
 			pattern:  "tld",
-			wantTrie: nil,
 			wantBool: false,
 		},
 		{
 			name:     "02 - nil root",
 			trie:     &tTrie{},
 			pattern:  "tld",
-			wantTrie: nil, // &tTrie{root: &tNode{}},
 			wantBool: false,
 		},
 		{
 			name:     "03 - empty pattern",
 			trie:     newTrie(),
 			pattern:  "",
-			wantTrie: nil,
 			wantBool: false,
 		},
 		{
-			name:    "04 - add tld",
-			trie:    newTrie(),
-			pattern: "tld",
-			wantTrie: func() *tTrie {
-				t := newTrie()
-				t.root.add(tPartsList{"tld"})
-				return t
-			}(),
+			name:     "04 - add tld",
+			trie:     newTrie(),
+			pattern:  "tld",
 			wantBool: true,
 		},
 		{
-			name:    "05 - add domain.tld",
-			trie:    newTrie(),
-			pattern: "domain.tld",
-			wantTrie: func() *tTrie {
-				t := newTrie()
-				t.root.add(tPartsList{"tld", "domain"})
-				return t
-			}(),
+			name:     "05 - add domain.tld",
+			trie:     newTrie(),
+			pattern:  "domain.tld",
 			wantBool: true,
 		},
 		{
-			name:    "06 - add sub.domain.tld",
-			trie:    newTrie(),
-			pattern: "sub.domain.tld",
-			wantTrie: func() *tTrie {
-				t := newTrie()
-				t.root.add(tPartsList{"tld", "domain", "sub"})
-				return t
-			}(),
+			name:     "06 - add sub.domain.tld",
+			trie:     newTrie(),
+			pattern:  "sub.domain.tld",
 			wantBool: true,
 		},
 		{
-			name:    "07 - add host.sub.domain.tld",
-			trie:    newTrie(),
-			pattern: "host.sub.domain.tld",
-			wantTrie: func() *tTrie {
-				t := newTrie()
-				t.root.add(tPartsList{"tld", "domain", "sub", "host"})
-				return t
-			}(),
+			name:     "07 - add host.sub.domain.tld",
+			trie:     newTrie(),
+			pattern:  "host.sub.domain.tld",
 			wantBool: true,
 		},
 		// TODO: Add test cases.
@@ -159,25 +135,10 @@ func Test_tTrie_Add(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			gotTrie, gotBool := tc.trie.Add(tc.pattern)
-			if nil == gotTrie {
-				if nil != tc.wantTrie {
-					t.Error("tTrie.Add() = nil, want non-nil")
-				}
-				return
-			}
-			if nil == tc.wantTrie {
-				t.Errorf("tTrie.Add() =\n%q\nwant 'nil'",
-					gotTrie.String())
-				return
-			}
-			if !tc.wantTrie.Equal(gotTrie) {
-				t.Errorf("tTrie.Add() =\n%q\nwant\n%q",
-					gotTrie.String(), tc.wantTrie.String())
-			}
+			gotBool := tc.trie.Add(tc.pattern)
 
 			if gotBool != tc.wantBool {
-				t.Errorf("tTrie.Add() got1 = '%v', want '%v'",
+				t.Errorf("tTrie.Add() gotBool = '%v', want '%v'",
 					gotBool, tc.wantBool)
 			}
 		})
@@ -267,7 +228,6 @@ func Test_tTrie_Delete(t *testing.T) {
 		name     string
 		trie     *tTrie
 		pattern  string
-		wantTrie *tTrie
 		wantBool bool
 	}{
 		/* */
@@ -275,21 +235,18 @@ func Test_tTrie_Delete(t *testing.T) {
 			name:     "01 - nil trie",
 			trie:     nil,
 			pattern:  "tld",
-			wantTrie: nil,
 			wantBool: false,
 		},
 		{
 			name:     "02 - nil root",
 			trie:     &tTrie{},
 			pattern:  "tld",
-			wantTrie: nil,
 			wantBool: false,
 		},
 		{
 			name:     "03 - empty pattern",
 			trie:     newTrie(),
 			pattern:  "",
-			wantTrie: nil,
 			wantBool: false,
 		},
 		{
@@ -299,12 +256,7 @@ func Test_tTrie_Delete(t *testing.T) {
 				t.root.add(tPartsList{"tld"})
 				return t
 			}(),
-			pattern: "tld",
-			wantTrie: func() *tTrie {
-				t := newTrie()
-				t.root.isEnd = true
-				return t
-			}(),
+			pattern:  "tld",
 			wantBool: true,
 		},
 		/* */
@@ -315,12 +267,7 @@ func Test_tTrie_Delete(t *testing.T) {
 				t.root.add(tPartsList{"tld", "domain"})
 				return t
 			}(),
-			pattern: "domain.tld",
-			wantTrie: func() *tTrie {
-				t := newTrie()
-				t.root.isEnd = true
-				return t
-			}(),
+			pattern:  "domain.tld",
 			wantBool: true,
 		},
 		/* */
@@ -332,12 +279,7 @@ func Test_tTrie_Delete(t *testing.T) {
 				t.root.add(tPartsList{"tld", "domain", "*"})
 				return t
 			}(),
-			pattern: "host.domain.tld",
-			wantTrie: func() *tTrie {
-				t := newTrie()
-				t.root.add(tPartsList{"tld", "domain", "*"})
-				return t
-			}(),
+			pattern:  "host.domain.tld",
 			wantBool: true,
 		},
 		{
@@ -348,12 +290,7 @@ func Test_tTrie_Delete(t *testing.T) {
 				t.root.add(tPartsList{"tld", "domain", "*"})
 				return t
 			}(),
-			pattern: "*.domain.tld",
-			wantTrie: func() *tTrie {
-				t := newTrie()
-				t.root.add(tPartsList{"tld", "domain", "host"})
-				return t
-			}(),
+			pattern:  "*.domain.tld",
 			wantBool: true,
 		},
 		/* */
@@ -362,24 +299,9 @@ func Test_tTrie_Delete(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			gotTrie, gotBool := tc.trie.Delete(tc.pattern)
-			if nil == gotTrie {
-				if nil != tc.wantTrie {
-					t.Error("tTrie.Delete() = nil, want non-nil")
-				}
-				return
-			}
-			if nil == tc.wantTrie {
-				t.Errorf("tTrie.Delete() =\n%q\nwant 'nil'",
-					gotTrie.String())
-				return
-			}
-			if !tc.wantTrie.Equal(gotTrie) {
-				t.Errorf("tTrie.Delete() =\n%q\nwant\n%q",
-					gotTrie.String(), tc.wantTrie.String())
-			}
+			gotBool := tc.trie.Delete(tc.pattern)
 			if gotBool != tc.wantBool {
-				t.Errorf("tTrie.Delete() got1 = '%v', want '%v'",
+				t.Errorf("tTrie.Delete() gotBool = '%v', want '%v'",
 					gotBool, tc.wantBool)
 			}
 		})
@@ -424,7 +346,6 @@ func Test_tTrie_Load(t *testing.T) {
 		name    string
 		trie    *tTrie
 		reader  io.Reader
-		want    *tTrie
 		wantErr bool
 	}{
 		/* */
@@ -432,54 +353,36 @@ func Test_tTrie_Load(t *testing.T) {
 			name:    "01 - nil trie",
 			trie:    nil,
 			reader:  strings.NewReader("tld"),
-			want:    nil,
 			wantErr: true,
 		},
 		{
 			name:    "02 - nil reader",
 			trie:    newTrie(),
 			reader:  nil,
-			want:    newTrie(),
 			wantErr: true,
 		},
 		{
 			name:    "03 - empty reader",
 			trie:    newTrie(),
 			reader:  strings.NewReader(""),
-			want:    newTrie(),
 			wantErr: false,
 		},
 		{
-			name:   "04 - reader with comments",
-			trie:   newTrie(),
-			reader: strings.NewReader("# comment\n; comment\n# the next line is no comment\n comment"),
-			want: func() *tTrie {
-				t := newTrie()
-				t.root.add(tPartsList{"comment"})
-				return t
-			}(),
+			name:    "04 - reader with comments",
+			trie:    newTrie(),
+			reader:  strings.NewReader("# comment\n; comment\n# the next line is no comment\n comment"),
 			wantErr: false,
 		},
 		{
 			name:    "05 - reader with empty lines",
 			trie:    newTrie(),
 			reader:  strings.NewReader("\n\n\n"),
-			want:    newTrie(),
 			wantErr: false,
 		},
 		{
-			name:   "06 - reader with valid data",
-			trie:   newTrie(),
-			reader: strings.NewReader("tld\ndomain.tld\nhost.domain.tld\ninvalid\n*.domain.tld"),
-			want: func() *tTrie {
-				t := newTrie()
-				t.root.add(tPartsList{"invalid"})
-				t.root.add(tPartsList{"tld"})
-				t.root.add(tPartsList{"tld", "domain"})
-				t.root.add(tPartsList{"tld", "domain", "host"})
-				t.root.add(tPartsList{"tld", "domain", "*"})
-				return t
-			}(),
+			name:    "06 - reader with valid data",
+			trie:    newTrie(),
+			reader:  strings.NewReader("tld\ndomain.tld\nhost.domain.tld\ninvalid\n*.domain.tld"),
 			wantErr: false,
 		},
 		/* */
@@ -488,26 +391,11 @@ func Test_tTrie_Load(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := tc.trie.Load(tc.reader)
+			err := tc.trie.Load(tc.reader)
 			if (nil != err) != tc.wantErr {
 				t.Errorf("tTrie.Load() error = '%v', wantErr '%v'",
 					err, tc.wantErr)
 				return
-			}
-			if nil == got {
-				if nil != tc.want {
-					t.Error("tTrie.Load() = nil, want non-nil")
-				}
-				return
-			}
-			if nil == tc.want {
-				t.Errorf("tTrie.Load() =\n%q\nwant 'nil'",
-					got.String())
-				return
-			}
-			if !tc.want.Equal(got) {
-				t.Errorf("tTrie.Load() =\n%q\nwant\n%q",
-					got.String(), tc.want.String())
 			}
 		})
 	}
@@ -518,7 +406,6 @@ func Test_tTrie_Match(t *testing.T) {
 		name     string
 		trie     *tTrie
 		pattern  string
-		wantTrie *tTrie
 		wantBool bool
 	}{
 		/* */
@@ -526,28 +413,24 @@ func Test_tTrie_Match(t *testing.T) {
 			name:     "01 - nil trie",
 			trie:     nil,
 			pattern:  "tld",
-			wantTrie: nil,
 			wantBool: false,
 		},
 		{
 			name:     "02 - nil root",
 			trie:     &tTrie{},
 			pattern:  "tld",
-			wantTrie: nil,
 			wantBool: false,
 		},
 		{
 			name:     "03 - empty pattern",
 			trie:     newTrie(),
 			pattern:  "",
-			wantTrie: nil,
 			wantBool: false,
 		},
 		{
 			name:     "04 - non-matching pattern",
 			trie:     newTrie(),
 			pattern:  "nothing.will.be.matched.in.an.empty.tree",
-			wantTrie: newTrie(),
 			wantBool: false,
 		},
 		{
@@ -557,12 +440,7 @@ func Test_tTrie_Match(t *testing.T) {
 				t.root.add(tPartsList{"tld"})
 				return t
 			}(),
-			pattern: "tld",
-			wantTrie: func() *tTrie {
-				t := newTrie()
-				t.root.add(tPartsList{"tld"})
-				return t
-			}(),
+			pattern:  "tld",
 			wantBool: true,
 		},
 		/* */
@@ -571,24 +449,9 @@ func Test_tTrie_Match(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			gotTrie, gotBool := tc.trie.Match(tc.pattern)
-			if nil == gotTrie {
-				if nil != tc.wantTrie {
-					t.Error("tTrie.Match() = nil, want non-nil")
-				}
-				return
-			}
-			if nil == tc.wantTrie {
-				t.Errorf("tTrie.Match() =\n%q\nwant 'nil'",
-					gotTrie.String())
-				return
-			}
-			if !tc.wantTrie.Equal(gotTrie) {
-				t.Errorf("tTrie.Match() =\n%q\nwant\n%q",
-					gotTrie.String(), tc.wantTrie.String())
-			}
+			gotBool := tc.trie.Match(tc.pattern)
 			if gotBool != tc.wantBool {
-				t.Errorf("tTrie.Match() got1 = '%v', want '%v'",
+				t.Errorf("tTrie.Match() gotBool = '%v', want '%v'",
 					gotBool, tc.wantBool)
 			}
 		})
@@ -663,7 +526,7 @@ func Test_tTrie_String(t *testing.T) {
 		{
 			name: "01 - nil trie",
 			trie: nil,
-			want: "",
+			want: "node or argument is nil",
 		},
 		{
 			name: "02 - empty trie",
@@ -735,7 +598,6 @@ func Test_tTrie_Update(t *testing.T) {
 		trie       *tTrie
 		oldPattern string
 		newPattern string
-		wantTrie   *tTrie
 		wantBool   bool
 	}{
 		/* */
@@ -744,7 +606,6 @@ func Test_tTrie_Update(t *testing.T) {
 			trie:       nil,
 			oldPattern: "tld",
 			newPattern: "tld",
-			wantTrie:   nil,
 			wantBool:   false,
 		},
 		{
@@ -752,7 +613,6 @@ func Test_tTrie_Update(t *testing.T) {
 			trie:       &tTrie{},
 			oldPattern: "tld",
 			newPattern: "tld",
-			wantTrie:   nil,
 			wantBool:   false,
 		},
 		{
@@ -760,7 +620,6 @@ func Test_tTrie_Update(t *testing.T) {
 			trie:       newTrie(),
 			oldPattern: "",
 			newPattern: "tld",
-			wantTrie:   nil,
 			wantBool:   false,
 		},
 		{
@@ -768,7 +627,6 @@ func Test_tTrie_Update(t *testing.T) {
 			trie:       newTrie(),
 			oldPattern: "tld",
 			newPattern: "",
-			wantTrie:   nil,
 			wantBool:   false,
 		},
 		{
@@ -776,7 +634,6 @@ func Test_tTrie_Update(t *testing.T) {
 			trie:       newTrie(),
 			oldPattern: "tld",
 			newPattern: "tld",
-			wantTrie:   nil,
 			wantBool:   false,
 		},
 		{
@@ -788,12 +645,7 @@ func Test_tTrie_Update(t *testing.T) {
 			}(),
 			oldPattern: "tld",
 			newPattern: "new.tld",
-			wantTrie: func() *tTrie {
-				t := newTrie()
-				t.root.add(tPartsList{"tld", "new"})
-				return t
-			}(),
-			wantBool: true,
+			wantBool:   true,
 		},
 		/* */
 		// More tests are done with the node's method.
@@ -801,26 +653,11 @@ func Test_tTrie_Update(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			gotTrie, gotBool := tc.trie.Update(tc.oldPattern, tc.newPattern)
-			if nil == gotTrie {
-				if nil != tc.wantTrie {
-					t.Error("tTrie.Update() = nil, want non-nil")
-				}
-				return
-			}
-			if nil == tc.wantTrie {
-				t.Errorf("tTrie.Update() =\n%q\nwant 'nil'",
-					gotTrie.String())
-				return
-			}
+			gotBool := tc.trie.Update(tc.oldPattern, tc.newPattern)
 
 			if gotBool != tc.wantBool {
 				t.Errorf("tTrie.Update() gotBool = '%v', want '%v'",
 					gotBool, tc.wantBool)
-			}
-			if !tc.wantTrie.Equal(gotTrie) {
-				t.Errorf("tTrie.Update() =\n%q\nwant\n%q",
-					gotTrie.String(), tc.wantTrie.String())
 			}
 		})
 	}
