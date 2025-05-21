@@ -185,7 +185,7 @@ func newNode() *tNode {
 		if 0 < len(result.tChildren) {
 			result.tChildren = make(tChildren)
 		}
-		result.isEnd, result.isWild = false, false
+		result.terminator = 0
 	} else {
 		result = &tNode{tChildren: make(tChildren)}
 	}

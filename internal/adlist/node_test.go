@@ -32,7 +32,7 @@ func Test_tNode_Equal(t *testing.T) {
 		{
 			name:  "02 - not equal",
 			node:  newNode(),
-			other: &tNode{isEnd: true},
+			other: &tNode{terminator: endMask},
 			want:  false,
 		},
 		{
@@ -106,13 +106,13 @@ func Test_tNode_Equal(t *testing.T) {
 			node: func() *tNode {
 				n := newNode()
 				n.add(tPartsList{"tld"})
-				n.tChildren["tld"].isEnd = true
+				n.tChildren["tld"].terminator = endMask
 				return n
 			}(),
 			other: func() *tNode {
 				n := newNode()
 				n.add(tPartsList{"tld"})
-				n.tChildren["tld"].isEnd = false
+				n.tChildren["tld"].terminator = 0
 				return n
 			}(),
 			want: false,
@@ -181,7 +181,7 @@ func Test_tNode_String(t *testing.T) {
 			name: "06 - node with multiple levels",
 			node: &tNode{
 				tChildren: tChildren{"tld": &tNode{
-					tChildren: tChildren{"domain": &tNode{isEnd: true}},
+					tChildren: tChildren{"domain": &tNode{terminator: endMask}},
 				}},
 			},
 			want: "\"Node\":\n  isEnd: false\n  isWild: false\n  \"tld\":\n      isEnd: false\n      isWild: false\n      \"domain\":\n          isEnd: true\n          isWild: false\n",
@@ -294,7 +294,7 @@ func Test_tNode_add(t *testing.T) {
 									tChildren: tChildren{
 										"sub": newNode(),
 									},
-									isWild: true,
+									terminator: wildMask,
 								},
 							},
 						},
@@ -356,7 +356,7 @@ func Test_tNode_allPatterns(t *testing.T) {
 			name: "02 - nil patterns",
 			node: func() *tNode {
 				n := newNode()
-				n.isEnd = true
+				n.terminator = endMask
 				return n
 			}(),
 			want: nil, //tPartsList{},
@@ -365,7 +365,7 @@ func Test_tNode_allPatterns(t *testing.T) {
 			name: "03 - empty patterns",
 			node: func() *tNode {
 				n := newNode()
-				n.isEnd = true
+				n.terminator = endMask
 				return n
 			}(),
 			want: nil, //tPartsList{},
@@ -454,8 +454,8 @@ func Test_tNode_allPatterns(t *testing.T) {
 } // Test_tNode_allPatterns()
 
 func Test_tNode_clone(t *testing.T) {
-	km1a := tChildren{"tld": &tNode{isEnd: true}}
-	km1b := tChildren{"domain": &tNode{isEnd: true}}
+	km1a := tChildren{"tld": &tNode{terminator: endMask}}
+	km1b := tChildren{"domain": &tNode{terminator: endMask}}
 
 	tests := []struct {
 		name string
@@ -471,40 +471,34 @@ func Test_tNode_clone(t *testing.T) {
 		{
 			name: "02 - clone",
 			node: &tNode{
-				tChildren: km1a,
-				isEnd:     true,
-				isWild:    true,
+				tChildren:  km1a,
+				terminator: endMask | wildMask,
 			},
 			want: &tNode{
-				tChildren: km1a,
-				isEnd:     true,
-				isWild:    true,
+				tChildren:  km1a,
+				terminator: endMask | wildMask,
 			},
 		},
 		{
 			name: "03 - clone with children",
 			node: &tNode{
-				tChildren: km1a,
-				isEnd:     true,
-				isWild:    true,
+				tChildren:  km1a,
+				terminator: endMask | wildMask,
 			},
 			want: &tNode{
-				tChildren: km1a,
-				isEnd:     true,
-				isWild:    true,
+				tChildren:  km1a,
+				terminator: endMask | wildMask,
 			},
 		},
 		{
 			name: "04 - clone with multiple children",
 			node: &tNode{
-				tChildren: tChildren{"tld": &tNode{isEnd: true}, "domain": &tNode{isEnd: true}},
-				isEnd:     true,
-				isWild:    true,
+				tChildren:  tChildren{"tld": &tNode{terminator: endMask}, "domain": &tNode{terminator: endMask}},
+				terminator: endMask | wildMask,
 			},
 			want: &tNode{
-				tChildren: tChildren{"tld": &tNode{isEnd: true}, "domain": &tNode{isEnd: true}},
-				isEnd:     true,
-				isWild:    true,
+				tChildren:  tChildren{"tld": &tNode{terminator: endMask}, "domain": &tNode{terminator: endMask}},
+				terminator: endMask | wildMask,
 			},
 		},
 		{
@@ -513,54 +507,46 @@ func Test_tNode_clone(t *testing.T) {
 				tChildren: tChildren{"tld": &tNode{
 					tChildren: km1b,
 				}},
-				isEnd:  true,
-				isWild: true,
+				terminator: endMask | wildMask,
 			},
 			want: &tNode{
 				tChildren: tChildren{"tld": &tNode{
 					tChildren: km1b,
 				}},
-				isEnd:  true,
-				isWild: true,
+				terminator: endMask | wildMask,
 			},
 		},
 		{
 			name: "06 - clone with wildcard",
 			node: &tNode{
-				tChildren: tChildren{"*": &tNode{isWild: true}},
-				isEnd:     true,
-				isWild:    true,
+				tChildren:  tChildren{"*": &tNode{terminator: wildMask}},
+				terminator: endMask | wildMask,
 			},
 			want: &tNode{
-				tChildren: tChildren{"*": &tNode{isWild: true}},
-				isEnd:     true,
-				isWild:    true,
+				tChildren:  tChildren{"*": &tNode{terminator: wildMask}},
+				terminator: endMask | wildMask,
 			},
 		},
 		{
 			name: "07 - clone with wildcard and children",
 			node: &tNode{
-				tChildren: tChildren{"*": &tNode{isWild: true}, "tld": &tNode{isEnd: true}},
-				isEnd:     true,
-				isWild:    true,
+				tChildren:  tChildren{"*": &tNode{terminator: wildMask}, "tld": &tNode{terminator: endMask}},
+				terminator: endMask | wildMask,
 			},
 			want: &tNode{
-				tChildren: tChildren{"*": &tNode{isWild: true}, "tld": &tNode{isEnd: true}},
-				isEnd:     true,
-				isWild:    true,
+				tChildren:  tChildren{"*": &tNode{terminator: wildMask}, "tld": &tNode{terminator: endMask}},
+				terminator: endMask | wildMask,
 			},
 		},
 		{
 			name: "08 - clone with wildcard and multiple children",
 			node: &tNode{
-				tChildren: tChildren{"*": &tNode{isWild: true}, "tld": &tNode{isEnd: true}, "domain": &tNode{isEnd: true}},
-				isEnd:     true,
-				isWild:    true,
+				tChildren:  tChildren{"*": &tNode{terminator: wildMask}, "tld": &tNode{terminator: endMask}, "domain": &tNode{terminator: endMask}},
+				terminator: endMask | wildMask,
 			},
 			want: &tNode{
-				tChildren: tChildren{"*": &tNode{isWild: true}, "tld": &tNode{isEnd: true}, "domain": &tNode{isEnd: true}},
-				isEnd:     true,
-				isWild:    true,
+				tChildren:  tChildren{"*": &tNode{terminator: wildMask}, "tld": &tNode{terminator: endMask}, "domain": &tNode{terminator: endMask}},
+				terminator: endMask | wildMask,
 			},
 		},
 		/* */
@@ -1010,6 +996,7 @@ func Test_tNode_match(t *testing.T) {
 			parts: tPartsList{"tld", "domain", "*"},
 			want:  false,
 		},
+		/* */
 		{
 			name: "07 - match FQDN against wildcard",
 			node: func() *tNode {
@@ -1020,6 +1007,7 @@ func Test_tNode_match(t *testing.T) {
 			parts: tPartsList{"tld", "domain", "host"},
 			want:  true,
 		},
+		/* */
 		{
 			name: "08 - match FQDN against wildcard and FQDN",
 			node: func() *tNode {
@@ -1072,7 +1060,9 @@ func Test_tNode_match(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := tc.node.match(tc.parts); got != tc.want {
+			got := tc.node.match(tc.parts)
+
+			if got != tc.want {
 				t.Errorf("tNode.match() = '%v', want '%v'",
 					got, tc.want)
 			}

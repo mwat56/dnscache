@@ -43,13 +43,20 @@ func Test_newNode(t *testing.T) {
 				t.Errorf("newNode() = %v, want empty children",
 					gotNode.tChildren)
 			}
-			if gotNode.isEnd {
-				t.Errorf("newNode() = %v, want `false` `isEnd`",
-					gotNode.isEnd)
+
+			if 0 != gotNode.terminator {
+				t.Errorf("newNode() = %v, want `0` `terminator`",
+					gotNode.terminator)
 			}
-			if gotNode.isWild {
+
+			isEnd := ((gotNode.terminator & endMask) == endMask)
+			if isEnd {
+				t.Errorf("newNode() = %v, want `false` `isEnd`",
+					isEnd)
+			}
+			if (gotNode.terminator & wildMask) == wildMask {
 				t.Errorf("newNode() = %v, want `false` `isWild`",
-					gotNode.isWild)
+					true)
 			}
 			if !tc.wantNode.Equal(gotNode) {
 				t.Errorf("newNode() =\n%q\nwant\n%q",

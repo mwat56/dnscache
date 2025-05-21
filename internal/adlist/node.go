@@ -19,19 +19,26 @@ import (
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
+const (
+	// `endMask` is the bit mask to use for marking a node as a leaf node.
+	endMask = 192 // 11000000
+
+	// `wildMask` is the bit mask to use for marking a node as a wildcard node.
+	wildMask = 3 // 00000011
+)
+
 type (
 	// `tChildren` is a map of children nodes.
 	tChildren map[string]*tNode
 
 	// `tNode` represents a node in the trie.
 	//
-	// The node is a leaf node if `isEnd` is `true` and it's a wildcard
-	// node if `isWild` is `true`.
+	// The node is a leaf node if `terminator` has the `endMask` bit set and
+	// it's a wildcard node if `terminator` has the `wildMask` bit set.
 	tNode struct {
-		sync.RWMutex      // barrier for concurrent access
-		tChildren         // children nodes
-		isEnd        bool // `true` if the node is a leaf node
-		isWild       bool // `true` if the node is a wildcard node
+		sync.RWMutex       // barrier for concurrent access
+		tChildren          // children nodes
+		terminator   uint8 // flags for pattern end and wildcard
 	}
 )
 
@@ -86,32 +93,33 @@ func (n *tNode) add(aPartsList tPartsList) bool {
 		return false
 	}
 	var (
-		idx, depth, ends int
-		label            string
-		ok               bool
+		depth, added, ends int
+		isEnd, isWild, ok  bool
+		label              string
 	)
 
 	node := n
-	for idx, label = range aPartsList {
+	for depth, label = range aPartsList {
 		if _, ok = node.tChildren[label]; !ok {
 			node.tChildren[label] = newNode()
-			depth++
+			added++
 		}
 
 		// Descend into the child node
 		node = node.tChildren[label]
-		if "*" == label {
-			node.isWild = true
+		if isWild = ("*" == label); isWild {
+			node.terminator = wildMask
 			ends++
 		}
-		if (len(aPartsList) - 1) == idx {
-			if node.isEnd = (!node.isWild); node.isEnd {
+		if (len(aPartsList) - 1) == depth {
+			if isEnd = (!isWild); isEnd {
+				node.terminator |= endMask
 				ends++
 			}
 		}
 	} // for parts
 
-	return (0 < depth) || (0 < ends)
+	return (0 < added) || (0 < ends)
 } // add()
 
 // `allPatterns()` collects all hostname patterns in the node's tree.
@@ -149,7 +157,8 @@ func (n *tNode) allPatterns() (rList tPartsList) {
 		stack = stack[:len(stack)-1]
 
 		// Check if current node is a terminal pattern
-		if current.node.isEnd || current.node.isWild {
+		if ((current.node.terminator & endMask) == endMask) ||
+			((current.node.terminator & wildMask) == wildMask) {
 			// Reverse the path to get the original FQDN
 			// in original order.
 			if pLen := len(current.path); 0 < pLen {
@@ -202,9 +211,8 @@ func (n *tNode) clone() *tNode {
 	}
 
 	clone := &tNode{
-		tChildren: make(tChildren),
-		isEnd:     n.isEnd,
-		isWild:    n.isWild,
+		tChildren:  make(tChildren),
+		terminator: n.terminator,
 	}
 
 	// Clone the children nodes
@@ -247,7 +255,8 @@ func (n *tNode) count() (rNodes, rPatterns int) {
 		rNodes++
 
 		// Check if current node is a terminal pattern
-		if current.node.isEnd || current.node.isWild {
+		if ((current.node.terminator & endMask) == endMask) ||
+			((current.node.terminator & wildMask) == wildMask) {
 			rPatterns++
 		}
 
@@ -304,7 +313,8 @@ func (n *tNode) delete(aPartsList tPartsList) (rOK bool) {
 		}
 	)
 	var (
-		stack []tStackEntry
+		isEnd, isWild bool
+		stack         []tStackEntry
 	)
 	current := n
 
@@ -321,7 +331,7 @@ func (n *tNode) delete(aPartsList tPartsList) (rOK bool) {
 	}
 
 	// Unset terminal markers at the end node
-	current.isEnd, current.isWild = false, false
+	current.terminator = 0
 
 	// Backtrack and prune
 	for i := len(stack) - 1; 0 <= i; i-- {
@@ -337,8 +347,12 @@ func (n *tNode) delete(aPartsList tPartsList) (rOK bool) {
 		delete(parent.tChildren, label)
 		putNode(child) // Return the child to the pool
 		if 0 == len(parent.tChildren) {
-			parent.isWild = ("*" == label) //TODO: ??
-			parent.isEnd = (!parent.isWild)
+			if isWild = ("*" == label); isWild {
+				parent.terminator = wildMask
+			}
+			if isEnd = (!isWild); isEnd {
+				parent.terminator |= endMask
+			}
 		}
 		rOK = true
 	}
@@ -367,10 +381,7 @@ func (n *tNode) Equal(aNode *tNode) bool {
 	aNode.RLock()
 	defer aNode.RUnlock()
 
-	if n.isEnd != aNode.isEnd {
-		return false
-	}
-	if n.isWild != aNode.isWild {
+	if n.terminator != aNode.terminator {
 		return false
 	}
 	if len(n.tChildren) != len(aNode.tChildren) {
@@ -397,8 +408,8 @@ func (n *tNode) Equal(aNode *tNode) bool {
 //
 // Since all fields of all sub-nodes of the current node are private, this
 // method doesn't provide access to a node's data. Its only use from outside
-// this package would be to gather statistics for example by calling a node's
-// public `String()` method.
+// this package would be to gather statistics or calling the node's public
+// `String()` method.
 //
 // Parameters:
 //   - `aFunc`: The function to call for each node.
@@ -496,11 +507,11 @@ func (n *tNode) match(aPartsList tPartsList) bool {
 	}
 
 	var ( // avoid repeated allocations inside the loop
-		child   *tNode
-		depth   int
-		label   string
-		matched bool
-		ok      bool
+		child       *tNode
+		depth       int
+		isEnd       bool
+		label       string
+		matched, ok bool
 	)
 
 	for depth, label = range aPartsList {
@@ -508,7 +519,8 @@ func (n *tNode) match(aPartsList tPartsList) bool {
 		if !ok {
 			// No child with that name, check for wildcard
 			if child, ok = n.tChildren["*"]; ok {
-				matched = (child.isWild || child.isEnd)
+				matched = (((child.terminator & wildMask) == wildMask) ||
+					((child.terminator & endMask) == endMask))
 			}
 			break
 		}
@@ -516,13 +528,16 @@ func (n *tNode) match(aPartsList tPartsList) bool {
 		n = child
 		// First check for a wildcard match at the current level,
 		if child, ok = n.tChildren["*"]; ok {
-			matched = (child.isWild || child.isEnd)
+			matched = (((child.terminator & wildMask) == wildMask) ||
+				((child.terminator & endMask) == endMask))
 			break
 		} else {
 			// Remember the last non-wildcard node
 			child = n
 		}
-		if n.isWild || (len(aPartsList)-1 == depth) && n.isEnd {
+		isEnd = ((n.terminator & endMask) == endMask)
+		if ((n.terminator & wildMask) == wildMask) ||
+			(len(aPartsList)-1 == depth) && isEnd {
 			matched = true
 			break
 		}
@@ -576,7 +591,8 @@ func (n *tNode) store(aWriter io.Writer, aIP string) error {
 		stack = stack[:len(stack)-1]
 
 		// Process current node
-		if entry.node.isEnd || entry.node.isWild {
+		if ((entry.node.terminator & endMask) == endMask) ||
+			((entry.node.terminator & wildMask) == wildMask) {
 			// Reverse path to original FQDN format
 			pLen := len(entry.path)
 			reversed := make(tPartsList, pLen)
@@ -670,7 +686,9 @@ func (n *tNode) string(aLabel string) string {
 		// print its details
 		if nil == entry.kids {
 			line := fmt.Sprintf("%q:\n%sisEnd: %v\n%sisWild: %v\n",
-				entry.name, indent, entry.node.isEnd, indent, entry.node.isWild)
+				entry.name,
+				indent, ((entry.node.terminator & endMask) == endMask),
+				indent, ((entry.node.terminator & wildMask) == wildMask))
 			builder.WriteString(line)
 
 			// Prepare sorted child keys
