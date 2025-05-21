@@ -13,6 +13,7 @@ import (
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
 func Test_newNode(t *testing.T) {
+	initReal() // initialise the node pool
 	tests := []struct {
 		name     string
 		wantNode *tNode
@@ -58,42 +59,91 @@ func Test_newNode(t *testing.T) {
 	}
 } // Test_newNode()
 
-func Test_tPool_Metrics(t *testing.T) {
+func Test_poolMetrics(t *testing.T) {
+	func() {
+		// These tests would succeed only if the test was run as part
+		// of only this file's tests, but would fail when run as part
+		// of the package's whole test suite, as the pool is
+		// initialised only once and the pool metric's numbers will be
+		// influenced by other tests. To circumvent this, we reset the
+		// pool's metrics to a known state: empty pool, no creations
+		// or returns.
+		np := nodePool
+		for range len(np.nodes) {
+			_ = np.Get()
+		}
+		np.created.Store(0)
+		np.returned.Store(0)
+	}()
+
 	tests := []struct {
 		name         string
-		pool         *tPool
 		wantCreated  uint32
 		wantReturned uint32
 		wantSize     int
 	}{
+		/* */
 		{
 			name:         "01 - empty pool",
-			pool:         newPool(10, nil),
-			wantCreated:  0,
-			wantReturned: 0,
-			wantSize:     0,
+			wantCreated:  10, // item created by test 02
+			wantReturned: 3,  // 256 during init plus items from test 02, 03
+			wantSize:     2,  // items from tests 02 and 03
 		},
+		{
+			name:        "02 - pool with one item",
+			wantCreated: 10, // item created by test 02
+			wantReturned: func() uint32 {
+				_ = nodePool.Get()
+				nodePool.Put(&tNode{tChildren: make(tChildren)})
+				return 3 // 256 during init plus items from test 02, 03
+			}(),
+			wantSize: 2, // items from tests 02 and 03
+		},
+		{
+			name:        "03 - pool with three items",
+			wantCreated: 10, // item created by test 02
+			wantReturned: func() uint32 {
+				for range 10 {
+					_ = nodePool.Get()
+				}
+				nodePool.Put(&tNode{tChildren: make(tChildren)})
+				nodePool.Put(&tNode{tChildren: make(tChildren)})
+				return 3 // 256 during init plus items from test 02, 03
+			}(),
+			wantSize: 2, // items from tests 02 and 03
+		},
+		{
+			name:         "04 - pool with two items",
+			wantCreated:  10, // item created by test 02
+			wantReturned: 3,  // 256 during init plus items from test 02, 03
+			wantSize:     2,  // items from tests 02 and 03
+		},
+		/* */
 		// TODO: Add test cases.
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			gotCreated, gotReturned, gotSize := tc.pool.Metrics()
+			gotMetrics := poolMetrics()
 
-			if gotCreated != tc.wantCreated {
-				t.Errorf("tPool.Metrics() gotCreated = %d, want %d",
-					gotCreated, tc.wantCreated)
+			if nil == gotMetrics {
+				t.Error("poolMetrics() = nil, want non-nil")
+				return
 			}
-			if gotReturned != tc.wantReturned {
-				t.Errorf("tPool.Metrics() gotCreated = %d, want %d",
-					gotReturned, tc.wantReturned)
+			if gotMetrics.Created != tc.wantCreated {
+				t.Errorf("poolMetrics() gotCreated = %d, want %d",
+					gotMetrics.Created, tc.wantCreated)
 			}
-			if gotSize != tc.wantSize {
-				t.Errorf("tPool.Metrics() gotSize = %d, want %d",
-					gotSize, tc.wantSize)
+			if gotMetrics.Returned != tc.wantReturned {
+				t.Errorf("poolMetrics() gotReturned = %d, want %d",
+					gotMetrics.Returned, tc.wantReturned)
+			}
+			if gotMetrics.Size != tc.wantSize {
+				t.Errorf("poolMetrics() gotSize = %d, want %d",
+					gotMetrics.Size, tc.wantSize)
 			}
 		})
 	}
-} // Test_tPool_Metrics()
+} // Test_poolMetrics()
 
 /* _EoF_ */

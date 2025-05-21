@@ -8,13 +8,23 @@ package adlist
 
 import (
 	"io"
-	"os"
-	"strings"
+	"sync/atomic"
 )
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
 type (
+	// `tTrieMetrics` contains the metrics data of the trie.
+	tTrieMetrics struct {
+		numNodes    atomic.Uint32
+		numPatterns atomic.Uint32
+		numHits     atomic.Uint32
+		numMisses   atomic.Uint32
+		numReloads  atomic.Uint32
+		numRetries  atomic.Uint32
+	}
+
+	//
 	// `tTrie` is a thread-safe trie for FQDN wildcards. It
 	// basically provides a CRUD interface for FQDN patterns.
 	//
@@ -23,7 +33,9 @@ type (
 	//   - `U`: Update a pattern [Update],
 	//   - `D`: Delete a pattern [Delete].
 	tTrie struct {
-		root *tNode
+		_            struct{}
+		tTrieMetrics // embedded metrics for the trie
+		root         *tNode
 	}
 )
 
@@ -193,7 +205,7 @@ func (t *tTrie) Equal(aTrie *tTrie) bool {
 // Parameters:
 //   - `aFunc`: The function to call for each node.
 func (t *tTrie) ForEach(aFunc func(aNode *tNode)) {
-	if nil == t || nil == t.root || nil == aFunc {
+	if (nil == t) || (nil == t.root) || (nil == aFunc) {
 		return
 	}
 
@@ -201,6 +213,18 @@ func (t *tTrie) ForEach(aFunc func(aNode *tNode)) {
 	t.root.forEach(aFunc)
 	t.root.RUnlock()
 } // ForEach()
+
+// `Hits()` returns the number of hits on the node.
+//
+// Returns:
+//   - `uint32`: The number of hits on the node.
+func (t *tTrie) Hits() uint32 {
+	if (nil == t) || (nil == t.root) {
+		return 0
+	}
+
+	return t.numHits.Load()
+} // Hits()
 
 // `Load()` reads hostname patterns (FQDN or wildcards) from the reader
 // and inserts them into the list.
@@ -255,11 +279,46 @@ func (t *tTrie) Match(aHostname string) (rOK bool) {
 	}
 
 	t.root.RLock()
-	rOK = t.root.match(parts, true)
+	rOK = t.root.match(parts)
 	t.root.RUnlock()
+
+	if rOK {
+		t.numHits.Add(1)
+	} else {
+		t.numMisses.Add(1)
+	}
 
 	return
 } // Match()
+
+// `Metrics()` returns the current metrics data.
+//
+// Returns:
+//   - `*TMetrics`: Current metrics data.
+func (t *tTrie) Metrics() *TMetrics {
+	if (nil == t) || (nil == t.root) {
+		return nil
+	}
+
+	t.root.RLock()
+	nodes, patterns := t.root.count()
+	t.root.RUnlock()
+	t.numNodes.Store(uint32(nodes))       //#nosec G115
+	t.numPatterns.Store(uint32(patterns)) //#nosec G115
+	pm := poolMetrics()
+
+	return &TMetrics{
+		PoolCreations: pm.Created,
+		PoolReturns:   pm.Returned,
+		PoolSize:      pm.Size,
+		Nodes:         t.numNodes.Load(),
+		Patterns:      t.numPatterns.Load(),
+		Hits:          t.numHits.Load(),
+		Misses:        t.numMisses.Load(),
+		Reloads:       t.numReloads.Load(),
+		Retries:       t.numRetries.Load(),
+	}
+} // Metrics()
 
 // `Store()` writes all patterns currently in the list to the writer,
 // one per line.
@@ -276,44 +335,11 @@ func (t *tTrie) Store(aWriter io.Writer) error {
 	}
 
 	t.root.RLock()
-	err := t.root.store(aWriter)
+	err := t.root.store(aWriter, "")
 	t.root.RUnlock()
 
 	return err
 } // Store()
-
-func (t *tTrie) store2file(aFilename string) error {
-	if (nil == t) || (nil == t.root) {
-		return ErrListNil
-	}
-	if aFilename = strings.TrimSpace(aFilename); 0 == len(aFilename) {
-		return nil
-	}
-
-	tmpName := aFilename + "~"
-	if _, err := os.Stat(tmpName); nil == err {
-		_ = os.Remove(tmpName)
-	}
-
-	file, err := os.Create(tmpName) //#nosec G304
-	if nil != err {
-		return err
-	}
-	defer file.Close()
-
-	t.root.RLock()
-	err = t.root.store(file)
-	t.root.RUnlock()
-
-	if nil != err {
-		_ = os.Remove(tmpName)
-	} else {
-		// Replace `aFilename` if it exists
-		_ = os.Rename(tmpName, aFilename)
-	}
-
-	return err
-} // store2file()
 
 // `String()` implements the `fmt.Stringer` interface for the trie.
 //

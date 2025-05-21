@@ -458,6 +458,78 @@ func Test_tTrie_Match(t *testing.T) {
 	}
 } // Test_tTrie_Match()
 
+func Test_tTrie_Metrics(t *testing.T) {
+	func() {
+		// This test would succeed only if it was run as part of only
+		// this file's tests, but would fail when run as part of the
+		// package's whole test suite, as the pool is initialised only
+		// once and the pool metric's numbers will be influenced by
+		// other tests. To circumvent this, we reset the pool's metrics
+		// to a known state: empty pool, no creations or returns.
+		np := nodePool
+		for range len(np.nodes) {
+			_ = np.Get()
+		}
+		np.created.Store(0)
+		np.returned.Store(0)
+	}()
+	tests := []struct {
+		name string
+		trie *tTrie
+		want *TMetrics
+	}{
+		/* */
+		{
+			name: "01 - nil trie",
+			trie: nil,
+			want: nil,
+		},
+		{
+			name: "02 - nil root",
+			trie: &tTrie{},
+			want: nil,
+		},
+		{
+			name: "03 - initialised trie",
+			trie: newTrie(),
+			want: &TMetrics{
+				PoolCreations: 1,
+				PoolReturns:   0,
+				PoolSize:      0,
+				Nodes:         1,
+				Patterns:      0,
+				Hits:          0,
+				Misses:        0,
+				Reloads:       0,
+				Retries:       0,
+			},
+		},
+		/* */
+		// More tests are done on the metric's method.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.trie.Metrics()
+			if nil == got {
+				if nil != tc.want {
+					t.Error("tTrie.Metrics() = nil, want non-nil")
+				}
+				return
+			}
+			if nil == tc.want {
+				t.Errorf("tTrie.Metrics() =\n%q\nwant 'nil'",
+					got.String())
+				return
+			}
+			if !tc.want.Equal(got) {
+				t.Errorf("tTrie.Metrics() =\n%q\nwant\n%q",
+					got.String(), tc.want.String())
+			}
+		})
+	}
+} // Test_tTrie_Metrics()
+
 func Test_tTrie_Store(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -531,7 +603,7 @@ func Test_tTrie_String(t *testing.T) {
 		{
 			name: "02 - empty trie",
 			trie: newTrie(),
-			want: "\"Trie\":\n  isEnd: false\n  isWild: false\n  hits: 0\n",
+			want: "\"Trie\":\n  isEnd: false\n  isWild: false\n",
 		},
 		{
 			name: "03 - trie with root",
@@ -540,7 +612,7 @@ func Test_tTrie_String(t *testing.T) {
 				t.root.add(tPartsList{"tld"})
 				return t
 			}(),
-			want: "\"Trie\":\n  isEnd: false\n  isWild: false\n  hits: 0\n  \"tld\":\n      isEnd: true\n      isWild: false\n      hits: 0\n",
+			want: "\"Trie\":\n  isEnd: false\n  isWild: false\n  \"tld\":\n      isEnd: true\n      isWild: false\n",
 		},
 		{
 			name: "04 - trie with root and children",
@@ -549,7 +621,7 @@ func Test_tTrie_String(t *testing.T) {
 				t.root.add(tPartsList{"tld", "domain"})
 				return t
 			}(),
-			want: "\"Trie\":\n  isEnd: false\n  isWild: false\n  hits: 0\n  \"tld\":\n      isEnd: false\n      isWild: false\n      hits: 0\n      \"domain\":\n          isEnd: true\n          isWild: false\n          hits: 0\n",
+			want: "\"Trie\":\n  isEnd: false\n  isWild: false\n  \"tld\":\n      isEnd: false\n      isWild: false\n      \"domain\":\n          isEnd: true\n          isWild: false\n",
 		},
 		{
 			name: "05 - trie with root, child and wildcard",
@@ -558,7 +630,7 @@ func Test_tTrie_String(t *testing.T) {
 				t.root.add(tPartsList{"*", "domain"})
 				return t
 			}(),
-			want: "\"Trie\":\n  isEnd: false\n  isWild: false\n  hits: 0\n  \"*\":\n      isEnd: false\n      isWild: true\n      hits: 0\n      \"domain\":\n          isEnd: true\n          isWild: false\n          hits: 0\n",
+			want: "\"Trie\":\n  isEnd: false\n  isWild: false\n  \"*\":\n      isEnd: false\n      isWild: true\n      \"domain\":\n          isEnd: true\n          isWild: false\n",
 		},
 		{
 			name: "06 - trie with root and children and wildcard",
@@ -567,7 +639,7 @@ func Test_tTrie_String(t *testing.T) {
 				t.root.add(tPartsList{"tld", "domain", "*"})
 				return t
 			}(),
-			want: "\"Trie\":\n  isEnd: false\n  isWild: false\n  hits: 0\n  \"tld\":\n      isEnd: false\n      isWild: false\n      hits: 0\n      \"domain\":\n          isEnd: false\n          isWild: false\n          hits: 0\n          \"*\":\n              isEnd: false\n              isWild: true\n              hits: 0\n",
+			want: "\"Trie\":\n  isEnd: false\n  isWild: false\n  \"tld\":\n      isEnd: false\n      isWild: false\n      \"domain\":\n          isEnd: false\n          isWild: false\n          \"*\":\n              isEnd: false\n              isWild: true\n",
 		},
 		{
 			name: "07 - trie with root and child and wildcard and child",
@@ -576,7 +648,7 @@ func Test_tTrie_String(t *testing.T) {
 				t.root.add(tPartsList{"tld", "domain", "*", "sub"})
 				return t
 			}(),
-			want: "\"Trie\":\n  isEnd: false\n  isWild: false\n  hits: 0\n  \"tld\":\n      isEnd: false\n      isWild: false\n      hits: 0\n      \"domain\":\n          isEnd: false\n          isWild: false\n          hits: 0\n          \"*\":\n              isEnd: false\n              isWild: true\n              hits: 0\n              \"sub\":\n                  isEnd: true\n                  isWild: false\n                  hits: 0\n",
+			want: "\"Trie\":\n  isEnd: false\n  isWild: false\n  \"tld\":\n      isEnd: false\n      isWild: false\n      \"domain\":\n          isEnd: false\n          isWild: false\n          \"*\":\n              isEnd: false\n              isWild: true\n              \"sub\":\n                  isEnd: true\n                  isWild: false\n",
 		},
 		/* */
 		// More tests are done on the node's method.

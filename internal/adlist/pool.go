@@ -25,6 +25,19 @@ const (
 )
 
 type (
+	// `tPoolMetrics` contains the metrics data for the pool.
+	//
+	// These are the fields providing the metrics data:
+	//
+	//   - `Created`: Number of items created by the pool.
+	//   - `Returned`: Number of items returned to the pool.
+	//   - `Size`: Current number of items in the pool.
+	tPoolMetrics struct {
+		Created  uint32
+		Returned uint32
+		Size     int
+	}
+
 	// `tPool` is a bounded pool of items.
 	//
 	// The pool is inherently thread-safe. Its size is fixed and can't
@@ -33,16 +46,19 @@ type (
 	// The pool's factory function `New()` is called to create new items.
 	//
 	tPool struct {
-		New      func() any    // Factory function
-		items    chan any      // Bounded channel
+		New      func() *tNode // Factory function
+		nodes    chan any      // Bounded channel
 		created  atomic.Uint32 // Number of items created
 		returned atomic.Uint32 // Number of items returned
 	}
 )
 
 var (
+	// `nodePool` is the running pool of `tNode` instances.
 	nodePool *tPool
-	once     sync.Once
+
+	// Make sure, the node pool is only initialised once.
+	poolInit sync.Once
 )
 
 // ---------------------------------------------------------------------------
@@ -50,23 +66,43 @@ var (
 
 // `init()` pre-allocates some nodes for the pool.
 func init() {
-	once.Do(func() {
-		nodePool = newPool(int(poolInitSize<<2), nil)
-		nodePool.New = func() any {
-			nodePool.created.Add(1)
-			return &tNode{tChildren: make(tChildren)}
-		}
-	}) // once.Do()
-
-	for range poolInitSize {
-		nodePool.Put(&tNode{tChildren: make(tChildren)})
-	}
+	initReal()
 } // init()
+
+// `initReal()` pre-allocates some nodes for the pool.
+//
+// This function is called only once during package initialisation.
+//
+// During unit testing, this function could be called manually.
+func initReal() {
+	poolInit.Do(func() {
+		nodePool = newPool(int(poolInitSize<<2), nil)
+		nodePool.New = func() *tNode {
+			nodePool.created.Add(1)
+			return &tNode{
+				tChildren: make(tChildren),
+			}
+		}
+
+		for range poolInitSize {
+			nodePool.Put(&tNode{tChildren: make(tChildren)})
+		}
+	}) // poolInit.Do()
+} // initReal()
 
 // ---------------------------------------------------------------------------
 // `tPool` constructor:
 
 // `newPool()` returns a new bounded pool.
+//
+// This function is called only once during package initialisation.
+//
+// The pool's size is fixed and can't be changed after creation.
+// If `aSize` is less than or equal to zero, the default size
+// (`poolInitSize`) is used.
+//
+// The created pool is inherently thread-safe by using a channel for
+// storing nodes.
 //
 // Parameters:
 //   - `aSize`: The maximum number of items in the pool.
@@ -74,12 +110,12 @@ func init() {
 //
 // Returns:
 //   - `*tPool`: A new `tPool` instance.
-func newPool(aSize int, newFunc func() any) *tPool {
+func newPool(aSize int, newFunc func() *tNode) *tPool {
 	if 0 >= aSize {
 		aSize = poolInitSize
 	}
 	return &tPool{
-		items: make(chan any, aSize),
+		nodes: make(chan any, aSize),
 		New:   newFunc,
 	}
 } // newPool()
@@ -94,36 +130,30 @@ func newPool(aSize int, newFunc func() any) *tPool {
 // Returns:
 //   - `any`: An item from the pool.
 func (p *tPool) Get() any {
+	if nil == p {
+		initReal() // initialise the node pool
+		p = nodePool
+	}
+
 	select {
-	case item := <-p.items:
+	case item := <-p.nodes:
 		return item
 	default:
-		p.created.Add(1)
 		return p.New()
 	}
 } // Get()
-
-// `Metrics()` returns the current pool metrics.
-//
-// Returns:
-//   - `rCreated`: Number of nodes created by the pool.
-//   - `rReturned`: Number of nodes returned to the pool.
-//   - `rSize`: Current number of items in the pool.
-func (p *tPool) Metrics() (rCreated, rReturned uint32, rSize int) {
-	rCreated, rReturned, rSize = p.created.Load(),
-		p.returned.Load(),
-		len(p.items)
-
-	return
-} // Metrics()
 
 // `Put()` returns an item to the pool.
 //
 // If the pool is full, the item is dropped.
 //
 // Parameters:
-//   - `x`: The item to return to the pool.
-func (p *tPool) Put(x any) {
+//   - `aNode`: The node to return to the pool.
+func (p *tPool) Put(aNode *tNode) {
+	if nil == p {
+		initReal() // initialise the node pool
+		p = nodePool
+	}
 	if (p.returned.Add(1) & poolDropMask) == poolDropMask {
 		// Drop the node if the drop mask matches.
 		// This leaves the given `aNode` for GC.
@@ -132,7 +162,7 @@ func (p *tPool) Put(x any) {
 	}
 
 	select {
-	case p.items <- x:
+	case p.nodes <- aNode:
 		// Item was added to pool
 		runtime.Gosched()
 	default:
@@ -148,23 +178,42 @@ func (p *tPool) Put(x any) {
 //
 // Returns:
 //   - `*tNode`: A new `tNode` instance.
-func newNode() (rNode *tNode) {
-	var ok bool
-	if rNode, ok = nodePool.Get().(*tNode); ok {
+func newNode() *tNode {
+	result, ok := nodePool.Get().(*tNode)
+	if ok {
 		// Clear/reset the old field values
-		if 0 < len(rNode.tChildren) {
-			rNode.tChildren = make(tChildren)
+		if 0 < len(result.tChildren) {
+			result.tChildren = make(tChildren)
 		}
-		rNode.isEnd, rNode.isWild = false, false
+		result.isEnd, result.isWild = false, false
 	} else {
-		rNode = &tNode{tChildren: make(tChildren)}
+		result = &tNode{tChildren: make(tChildren)}
 	}
 
-	return
+	return result
 } // newNode()
 
 // ---------------------------------------------------------------------------
-// Helper function:
+// Helper functions:
+
+// `poolMetrics()` returns the current pool metrics.
+//
+// Returns:
+//   - `rCreated`: Number of nodes created by the pool.
+//   - `rReturned`: Number of nodes returned to the pool.
+//   - `rSize`: Current number of items in the pool.
+func poolMetrics() *tPoolMetrics {
+	if nil == nodePool {
+		initReal() // initialise the node pool
+	}
+	np := nodePool
+
+	return &tPoolMetrics{
+		Created:  np.created.Load(),
+		Returned: np.returned.Load(),
+		Size:     len(np.nodes),
+	}
+} // poolMetrics()
 
 // `putNode()` returns a node to the pool.
 //
