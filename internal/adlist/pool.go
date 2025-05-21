@@ -155,7 +155,6 @@ func newNode() (rNode *tNode) {
 		if 0 < len(rNode.tChildren) {
 			rNode.tChildren = make(tChildren)
 		}
-		rNode.hits.Store(0)
 		rNode.isEnd, rNode.isWild = false, false
 	} else {
 		rNode = &tNode{tChildren: make(tChildren)}

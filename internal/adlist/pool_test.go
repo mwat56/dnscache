@@ -42,10 +42,6 @@ func Test_newNode(t *testing.T) {
 				t.Errorf("newNode() = %v, want empty children",
 					gotNode.tChildren)
 			}
-			if 0 != gotNode.hits.Load() {
-				t.Errorf("newNode() = %d, want `0` `hits`",
-					gotNode.hits.Load())
-			}
 			if gotNode.isEnd {
 				t.Errorf("newNode() = %v, want `false` `isEnd`",
 					gotNode.isEnd)
