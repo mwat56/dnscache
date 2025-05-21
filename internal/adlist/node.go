@@ -398,7 +398,7 @@ func (n *tNode) Equal(aNode *tNode) bool {
 // Since all fields of all sub-nodes of the current node are private, this
 // method doesn't provide access to a node's data. Its only use from outside
 // this package would be to gather statistics for example by calling a node's
-// public methods like `Hits()` or `String()`.
+// public `String()` method.
 //
 // Parameters:
 //   - `aFunc`: The function to call for each node.
@@ -442,14 +442,6 @@ func (n *tNode) forEach(aFunc func(aNode *tNode)) {
 		}
 	}
 } // forEach()
-
-// // `Hits()` returns the number of hits on the node.
-// //
-// // Returns:
-// //   - `uint32`: The number of hits on the node.
-// func (n *tNode) Hits() uint32 {
-// 	return n.hits.Load()
-// } // Hits()
 
 // `load()` reads patterns from the reader and adds them to the node's tree.
 //
@@ -734,10 +726,9 @@ func (n *tNode) String() string {
 
 // `update()` updates a pattern in the node's tree.
 //
-// The method deletes the old pattern and inserts the new one. If the
-// old pattern couldn't be deleted, the new one is not added and the
-// method returns `false`. Also, if the new pattern couldn't be added,
-// the old one is restored and the method returns `false`.
+// The method adds the new pattern and tries to delete the old one. If the
+// new pattern couldn't be added, the old one is not deleted. But as long
+// as the new pattern could be added the method returns `true`.
 //
 // Parameters:
 //   - `aOldParts`: The list of parts of the old pattern to update.
@@ -752,9 +743,9 @@ func (n *tNode) update(aOldParts, aNewParts tPartsList) bool {
 	var added bool
 	// Locking is done by the calling `tTrie`
 
-	// 1. Insert the new pattern
+	// 1. Add the new pattern
 	if added = n.add(aNewParts); added {
-		// 2. Only after successful insert, delete the old pattern.
+		// 2. Only after successful addition, delete the old pattern.
 		// This might fail if the old pattern is part of a longer
 		// pattern, but that's not a problem as the new pattern is
 		// already in place.

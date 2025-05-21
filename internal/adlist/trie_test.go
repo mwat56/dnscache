@@ -308,6 +308,96 @@ func Test_tTrie_Delete(t *testing.T) {
 	}
 } // Test_tTrie_Delete()
 
+func Test_tTrie_Count(t *testing.T) {
+	tests := []struct {
+		name         string
+		trie         *tTrie
+		wantNodes    int
+		wantPatterns int
+	}{
+		/* */
+		{
+			name:         "01 - nil trie",
+			trie:         nil,
+			wantNodes:    0,
+			wantPatterns: 0,
+		},
+		{
+			name:         "02 - nil root",
+			trie:         &tTrie{},
+			wantNodes:    0,
+			wantPatterns: 0,
+		},
+		{
+			name:         "03 - empty trie",
+			trie:         newTrie(),
+			wantNodes:    1,
+			wantPatterns: 0,
+		},
+		{
+			name: "04 - one pattern",
+			trie: func() *tTrie {
+				t := newTrie()
+				t.root.add(tPartsList{"tld"})
+				return t
+			}(),
+			wantNodes:    2, // root + tld
+			wantPatterns: 1,
+		},
+		{
+			name: "05 - two patterns",
+			trie: func() *tTrie {
+				t := newTrie()
+				t.root.add(tPartsList{"tld"})
+				t.root.add(tPartsList{"tld", "domain"})
+				return t
+			}(),
+			wantNodes:    3, // root + tld + domain.tld
+			wantPatterns: 2,
+		},
+		{
+			name: "06 - three patterns",
+			trie: func() *tTrie {
+				t := newTrie()
+				t.root.add(tPartsList{"tld"})
+				t.root.add(tPartsList{"tld", "domain"})
+				t.root.add(tPartsList{"tld", "domain", "sub"})
+				return t
+			}(),
+			wantNodes:    4, // root + tld + domain.tld + sub.domain.tld
+			wantPatterns: 3,
+		},
+		{
+			name: "07 - two patterns incl. wildcard",
+			trie: func() *tTrie {
+				t := newTrie()
+				t.root.add(tPartsList{"tld", "domain", "sub"})
+				t.root.add(tPartsList{"tld", "domain", "sub", "*"})
+				return t
+			}(),
+			wantNodes:    5, // root + 4 parts
+			wantPatterns: 2,
+		},
+		/* */
+		// TODO: Add test cases.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			gotNodes, gotPatterns := tc.trie.Count()
+
+			if gotNodes != tc.wantNodes {
+				t.Errorf("tTrie.Count() Nodes = %d, want %d",
+					gotNodes, tc.wantNodes)
+			}
+			if gotPatterns != tc.wantPatterns {
+				t.Errorf("tTrie.Count() Patterns = %d, want %d",
+					gotPatterns, tc.wantPatterns)
+			}
+		})
+	}
+} // Test_tTrie_Count()
+
 func Test_tTrie_ForEach(t *testing.T) {
 	tests := []struct {
 		name  string

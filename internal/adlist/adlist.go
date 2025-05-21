@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
@@ -26,7 +27,7 @@ type (
 	// `TADresult` is the result type of a test by [TADlist.Match].
 	TADresult int8
 
-	// `TADlistError` is a special error type for `TADlist` errors.
+	// `ADlistError` is a special error type for `TADlist` errors.
 	ADlistError struct {
 		error
 	}
@@ -64,47 +65,55 @@ func NewADlist() *TADlist {
 // ---------------------------------------------------------------------------
 // `TADlist` methods:
 
-// `AddAllow()` inserts an FQDN pattern (with optional wildcard)
+// `AddAllow()` inserts a FQDN pattern (with optional wildcard)
 // into the allow list.
 //
 // Parameters:
 //   - `aPattern`: The FQDN pattern to insert.
 //
 // Returns:
-//   - `*TADlist`: The updated list.
-//   - `bool`: `true` if the pattern was added, `false` otherwise.
-func (adl *TADlist) AddAllow(aPattern string) (*TADlist, bool) {
-	if (nil == adl) || (0 == len(aPattern)) {
-		return nil, false //TODO: special error type
-	}
-	if _, ok := adl.allow.Add(aPattern); !ok {
-		return nil, false //TODO: special error type
+//   - `rOK`: `true` if the pattern was added, `false` otherwise.
+func (adl *TADlist) AddAllow(aPattern string) (rOK bool) {
+	if nil == adl {
+		return
 	}
 
-	return adl, true
+	if aPattern = strings.TrimSpace(aPattern); 0 == len(aPattern) {
+		return
+	}
+
+	if rOK = adl.allow.Add(aPattern); !rOK {
+		return
+	}
+
+	return
 } // AddAllow()
 
-// `AddDeny()` inserts an FQDN pattern (with optional wildcard) into
+// `AddDeny()` inserts a FQDN pattern (with optional wildcard) into
 // the deny list.
 //
 // Parameters:
 //   - `aPattern`: The FQDN pattern to insert.
 //
 // Returns:
-//   - `*TADlist`: The updated list.
-//   - `bool`: `true` if the pattern was added, `false` otherwise.
-func (adl *TADlist) AddDeny(aPattern string) (*TADlist, bool) {
-	if (nil == adl) || (0 == len(aPattern)) {
-		return nil, false //TODO: special error type
-	}
-	if _, ok := adl.deny.Add(aPattern); !ok {
-		return nil, false //TODO: special error type
+//   - `rOK`: `true` if the pattern was added, `false` otherwise.
+func (adl *TADlist) AddDeny(aPattern string) (rOK bool) {
+	if nil == adl {
+		return
 	}
 
-	return adl, true
+	if aPattern = strings.TrimSpace(aPattern); 0 == len(aPattern) {
+		return
+	}
+
+	if rOK = adl.deny.Add(aPattern); !rOK {
+		return
+	}
+
+	return
 } // AddDeny()
 
-// `deletePattern()` removes an FQDN pattern (with optional wildcard)
+// `deletePattern()` removes a FQDN pattern (with optional wildcard)
 // from the given list.
 //
 // Parameters:
@@ -115,62 +124,59 @@ func (adl *TADlist) AddDeny(aPattern string) (*TADlist, bool) {
 //   - `bool`: `true` if the pattern was found and deleted, `false` otherwise.
 func deletePattern(aPattern string, aList *tTrie) bool {
 	if nil == aList || nil == aList.root {
-		return false //TODO: special error type
+		return false
 	}
 
 	if aPattern = strings.TrimSpace(aPattern); 0 == len(aPattern) {
 		// An empty pattern can not be removed from the list.
 		return false
 	}
-	_, ok := aList.Delete(aPattern)
 
-	return ok
+	return aList.Delete(aPattern)
 } // deletePattern()
 
-// `DeleteAllow()` removes an FQDN pattern (with optional wildcard)
+// `DeleteAllow()` removes a FQDN pattern (with optional wildcard)
 // from the allow list.
 //
 // Parameters:
 //   - `aPattern`: The FQDN pattern to remove.
 //
 // Returns:
-//   - `*TADlist`: The updated list.
-//   - `bool`: `true` if the pattern was found and deleted, `false` otherwise.
-func (adl *TADlist) DeleteAllow(aPattern string) (*TADlist, bool) {
+//   - `rOK`: `true` if the pattern was found and deleted, `false` otherwise.
+func (adl *TADlist) DeleteAllow(aPattern string) (rOK bool) {
 	if nil == adl {
-		return nil, false //TODO: special error type
-	}
-	if ok := deletePattern(aPattern, adl.allow); !ok {
-		return nil, false //TODO: special error type
+		return
 	}
 
-	return adl, true
+	if rOK = deletePattern(aPattern, adl.allow); !rOK {
+		return
+	}
+
+	return
 } // DeleteAllow()
 
-// `DeleteDeny()` removes an FQDN pattern (with optional wildcard)
+// `DeleteDeny()` removes a FQDN pattern (with optional wildcard)
 // from the deny list.
 //
 // Parameters:
 //   - `aPattern`: The FQDN pattern to remove.
 //
 // Returns:
-//   - `*TADlist`: The updated list.
-//   - `bool`: `true` if the pattern was found and deleted, `false` otherwise.
-func (adl *TADlist) DeleteDeny(aPattern string) (*TADlist, bool) {
+//   - `rOK`: `true` if the pattern was found and deleted, `false` otherwise.
+func (adl *TADlist) DeleteDeny(aPattern string) (rOK bool) {
 	if nil == adl {
-		return nil, false //TODO: special error type
-	}
-	if ok := deletePattern(aPattern, adl.deny); !ok {
-		return nil, false //TODO: special error type
+		return
 	}
 
-	return adl, true
+	if rOK = deletePattern(aPattern, adl.deny); !rOK {
+		return
+	}
+
+	return
 } // DeleteDeny()
 
 // `loadFile()` reads hostname patterns (FQDN or wildcards) from the
 // file and inserts them into the list.
-//
-// If `aFilename` does not exist, the method returns `nil` without error.
 //
 // The method ignores empty lines and comment lines (starting with `#` or
 // `;`). No attempt is made to validate the patterns regardless of FQDN or
@@ -185,15 +191,14 @@ func (adl *TADlist) DeleteDeny(aPattern string) (*TADlist, bool) {
 //   - `error`: `nil` if the patterns were read successfully, the error otherwise.
 func loadFile(aFilename string, aList *tTrie) error {
 	if (nil == aList) || (nil == aList.root) {
-		return nil //TODO: special error type
+		return ErrListNil
 	}
+
 	if aFilename = strings.TrimSpace(aFilename); 0 == len(aFilename) {
 		return nil
 	}
+
 	if _, err := os.Stat(aFilename); nil != err {
-		if os.IsNotExist(err) {
-			return nil
-		}
 		return err
 	}
 
@@ -202,7 +207,7 @@ func loadFile(aFilename string, aList *tTrie) error {
 		return err
 	}
 
-	_, err = aList.Load(file)
+	err = aList.Load(file)
 	_ = file.Close()
 
 	return err
@@ -217,18 +222,18 @@ func loadFile(aFilename string, aList *tTrie) error {
 //   - `aFilename`: The file to read the 'allow' patterns from.
 //
 // Returns:
-//   - `*TADlist`: The updated list.
 //   - `error`: `nil` if the patterns were read successfully, the error otherwise.
 //     see [LoadDeny], [StoreAllow]
-func (adl *TADlist) LoadAllow(aFilename string) (*TADlist, error) {
+func (adl *TADlist) LoadAllow(aFilename string) error {
 	if nil == adl {
-		return nil, nil //TODO: special error type
-	}
-	if err := loadFile(aFilename, adl.allow); nil != err {
-		return nil, err
+		return ErrListNil
 	}
 
-	return adl, nil
+	if err := loadFile(aFilename, adl.allow); nil != err {
+		return err
+	}
+
+	return nil
 } // LoadAllow()
 
 // `LoadDeny()` reads hostname patterns (FQDN or wildcards) from the
@@ -240,18 +245,18 @@ func (adl *TADlist) LoadAllow(aFilename string) (*TADlist, error) {
 //   - `aFilename`: The file to read the 'deny' patterns from.
 //
 // Returns:
-//   - `*TADlist`: The updated list.
 //   - `error`: `nil` if the patterns were read successfully, the error otherwise.
 //     see [LoadAllow], [StoreDeny]
-func (adl *TADlist) LoadDeny(aFilename string) (*TADlist, error) {
+func (adl *TADlist) LoadDeny(aFilename string) error {
 	if nil == adl {
-		return nil, nil //TODO: special error type
-	}
-	if err := loadFile(aFilename, adl.deny); nil != err {
-		return nil, err
+		return ErrListNil
 	}
 
-	return adl, nil
+	if err := loadFile(aFilename, adl.deny); nil != err {
+		return err
+	}
+
+	return nil
 } // LoadDeny()
 
 // `Match()` checks whether the given hostname should be allowed or blocked.
@@ -268,6 +273,7 @@ func (adl *TADlist) Match(aHostname string) TADresult {
 	if nil == adl {
 		return ADneutral
 	}
+
 	if aHostname = strings.TrimSpace(aHostname); 0 == len(aHostname) {
 		return ADneutral
 	}
@@ -275,17 +281,17 @@ func (adl *TADlist) Match(aHostname string) TADresult {
 	var (
 		// `allowOK` and `denyOK` are used to store the results
 		// of the concurrent lookups in the allow and deny lists.
-		allowOK, denyOK bool
+		allowOK, denyOK atomic.Bool
 		wg              sync.WaitGroup
 	)
 	wg.Add(2)
 	go func() {
-		_, denyOK = adl.deny.Match(aHostname)
+		denyOK.Store(adl.deny.Match(aHostname))
 		wg.Done()
 	}()
 
 	go func() {
-		_, allowOK = adl.allow.Match(aHostname)
+		allowOK.Store(adl.allow.Match(aHostname))
 		wg.Done()
 	}()
 
@@ -293,10 +299,10 @@ func (adl *TADlist) Match(aHostname string) TADresult {
 
 	// The allow list is usually shorter (and more specific) than the
 	// block list. Hence we give it preference.
-	if allowOK {
+	if allowOK.Load() {
 		return ADallow
 	}
-	if denyOK {
+	if denyOK.Load() {
 		return ADdeny
 	}
 
@@ -306,7 +312,7 @@ func (adl *TADlist) Match(aHostname string) TADresult {
 // `store2file()` writes all patterns currently in the list to the file.
 //
 // If `aFilename` is an empty string or `aList` is `nil`, the function
-// returns `nil` without error.
+// returns the `ErrListNil` error.
 //
 // The function uses a temporary file to write the patterns to, and then
 // renames it to the target filename. This way, the target file is always
@@ -321,10 +327,11 @@ func (adl *TADlist) Match(aHostname string) TADresult {
 //   - `error`: `nil` if the patterns were written successfully, the error otherwise.
 func store2file(aFilename string, aList *tTrie) error {
 	if (nil == aList) || (nil == aList.root) {
-		return nil
+		return ErrListNil
 	}
+
 	if aFilename = strings.TrimSpace(aFilename); 0 == len(aFilename) {
-		return nil
+		return ErrListNil
 	}
 
 	tmpName := aFilename + "~"
@@ -351,46 +358,48 @@ func store2file(aFilename string, aList *tTrie) error {
 
 // `StoreAllow()` writes all patterns currently in the allow list to the file.
 //
-// If `aFilename` is an empty string, the method returns `nil` without error.
+// If `aFilename` is an empty string or `aList` is `nil`, the function
+// returns the `ErrListNil` error.
 //
 // Parameters:
 //   - `aFilename`: The file to write the patterns to.
 //
 // Returns:
-//   - `*TADlist`: The updated list.
 //   - `error`: `nil` if the patterns were written successfully, the error otherwise.
 //     see [StoreDeny], [LoadAllow]
-func (adl *TADlist) StoreAllow(aFilename string) (*TADlist, error) {
+func (adl *TADlist) StoreAllow(aFilename string) error {
 	if nil == adl {
-		return nil, nil //TODO: special error type
-	}
-	if err := store2file(aFilename, adl.allow); nil != err {
-		return nil, err
+		return ErrListNil
 	}
 
-	return adl, nil
+	if err := store2file(aFilename, adl.allow); nil != err {
+		return err
+	}
+
+	return nil
 } // StoreAllow()
 
 // `StoreDeny()` writes all patterns currently in the deny list to the file.
 //
-// If `aFilename` is an empty string, the method returns `nil` without error.
+// If `aFilename` is an empty string or `aList` is `nil`, the function
+// returns the `ErrListNil` error.
 //
 // Parameters:
 //   - `aFilename`: The file to write the patterns to.
 //
 // Returns:
-//   - `*TADlist`: The updated list.
 //   - `error`: `nil` if the patterns were written successfully, the error otherwise.
 //     see [StoreAllow], [LoadDeny]
-func (adl *TADlist) StoreDeny(aFilename string) (*TADlist, error) {
+func (adl *TADlist) StoreDeny(aFilename string) error {
 	if nil == adl {
-		return nil, nil //TODO: special error type
-	}
-	if err := store2file(aFilename, adl.deny); nil != err {
-		return nil, err
+		return ErrListNil
 	}
 
-	return adl, nil
+	if err := store2file(aFilename, adl.deny); nil != err {
+		return err
+	}
+
+	return nil
 } // StoreDeny()
 
 // `String()` returns a string representation of the list.
@@ -418,17 +427,25 @@ func (adl *TADlist) String() string {
 //   - `aNewPattern`: The new pattern to replace the old one with.
 //
 // Returns:
-//   - `*TADlist`: The updated list.
-//   - `bool`: `true` if the pattern was updated, `false` otherwise.
-func (adl *TADlist) UpdateAllow(aOldPattern, aNewPattern string) (*TADlist, bool) {
+//   - `rOK`: `true` if the pattern was updated, `false` otherwise.
+func (adl *TADlist) UpdateAllow(aOldPattern, aNewPattern string) (rOK bool) {
 	if nil == adl {
-		return nil, false //TODO: special error type
-	}
-	if _, ok := adl.allow.Update(aOldPattern, aNewPattern); !ok {
-		return nil, false //TODO: special error type
+		return
 	}
 
-	return adl, true
+	if aOldPattern = strings.TrimSpace(aOldPattern); 0 == len(aOldPattern) {
+		return
+	}
+
+	if aNewPattern = strings.TrimSpace(aNewPattern); 0 == len(aNewPattern) {
+		return
+	}
+
+	if rOK = adl.allow.Update(aOldPattern, aNewPattern); !rOK {
+		return
+	}
+
+	return
 } // UpdateAllow()
 
 // `UpdateDeny()` replaces an old pattern with a new one in the deny list.
@@ -438,17 +455,25 @@ func (adl *TADlist) UpdateAllow(aOldPattern, aNewPattern string) (*TADlist, bool
 //   - `aNewPattern`: The new pattern to replace the old one with.
 //
 // Returns:
-//   - `*TADlist`: The updated list.
-//   - `bool`: `true` if the pattern was updated, `false` otherwise.
-func (adl *TADlist) UpdateDeny(aOldPattern, aNewPattern string) (*TADlist, error) {
+//   - `rOK`: `true` if the pattern was updated, `false` otherwise.
+func (adl *TADlist) UpdateDeny(aOldPattern, aNewPattern string) (rOK bool) {
 	if nil == adl {
-		return nil, ErrListNil
-	}
-	if _, ok := adl.deny.Update(aOldPattern, aNewPattern); !ok {
-		return nil, ADlistError{errors.New("pattern not found")}
+		return
 	}
 
-	return adl, nil
+	if aOldPattern = strings.TrimSpace(aOldPattern); 0 == len(aOldPattern) {
+		return
+	}
+
+	if aNewPattern = strings.TrimSpace(aNewPattern); 0 == len(aNewPattern) {
+		return
+	}
+
+	if rOK = adl.deny.Update(aOldPattern, aNewPattern); !rOK {
+		return
+	}
+
+	return
 } // UpdateDeny()
 
 /* _EoF_ */

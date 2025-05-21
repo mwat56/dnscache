@@ -36,7 +36,7 @@ func Test_getDNSServers(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := getDNSServers()
-			if (err != nil) != tc.wantErr {
+			if (nil != err) != tc.wantErr {
 				t.Errorf("getDNSServers() error = '%v', wantErr '%v'",
 					err, tc.wantErr)
 				return

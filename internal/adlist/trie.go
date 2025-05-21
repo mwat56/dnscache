@@ -194,13 +194,12 @@ func (t *tTrie) Equal(aTrie *tTrie) bool {
 //
 // Since all fields of the nodes in this trie are private, this method
 // doesn't provide access to the node's data. Its only use from outside
-// this package would be to gather statistics for example by calling
-// a node's public methods like `Hits()` or `String()`.
+// this package would be to gather statistics.
 //
 // The given `aFunc()` is called in a locked R/O context for each node in
 // the trie. That means that `aFunc()` can safely access the node's public
-// methods like [Hits] or [String] while all of the node's internal fields
-// remain private (i.e. inaccessible).
+// `String()` method while all of the node's internal fields remain private
+// (i.e. inaccessible).
 //
 // Parameters:
 //   - `aFunc`: The function to call for each node.
@@ -214,17 +213,17 @@ func (t *tTrie) ForEach(aFunc func(aNode *tNode)) {
 	t.root.RUnlock()
 } // ForEach()
 
-// `Hits()` returns the number of hits on the node.
-//
-// Returns:
-//   - `uint32`: The number of hits on the node.
-func (t *tTrie) Hits() uint32 {
-	if (nil == t) || (nil == t.root) {
-		return 0
-	}
+// // `Hits()` returns the number of hits on the trie nodes.
+// //
+// // Returns:
+// //   - `uint32`: The number of hits on the node.
+// func (t *tTrie) Hits() uint32 {
+// 	if (nil == t) || (nil == t.root) {
+// 		return 0
+// 	}
 
-	return t.numHits.Load()
-} // Hits()
+// 	return t.numHits.Load()
+// } // Hits()
 
 // `Load()` reads hostname patterns (FQDN or wildcards) from the reader
 // and inserts them into the list.
@@ -349,10 +348,8 @@ func (t *tTrie) String() (rStr string) {
 	if (nil == t) || (nil == t.root) {
 		return ErrNodeNil.Error()
 	}
-	// var builder strings.Builder
 
 	t.root.RLock()
-	// t.root.prepString(&builder, "Trie", 0)
 	rStr = t.root.string("Trie")
 	t.root.RUnlock()
 
@@ -360,6 +357,13 @@ func (t *tTrie) String() (rStr string) {
 } // String()
 
 // `Update()` replaces an old pattern with a new one.
+//
+// The method first adds the new pattern and tries to delete the old one.
+// If the new pattern couldn't be added, the old one is not deleted. The
+// deletion of the old pattern might fail if it is part of a longer
+// pattern, but that's not a problem as the new pattern is already in
+// place. However, as long as the new pattern could be added the method
+// returns `true`.
 //
 // Parameters:
 //   - `aOldPattern`: The old pattern to replace.
@@ -371,14 +375,17 @@ func (t *tTrie) Update(aOldPattern, aNewPattern string) (rOK bool) {
 	if nil == t || nil == t.root {
 		return
 	}
+
 	oldParts := pattern2parts(aOldPattern) // reversed list of parts
 	if 0 == len(oldParts) {
 		return
 	}
+
 	newParts := pattern2parts(aNewPattern)
 	if 0 == len(newParts) {
 		return
 	}
+
 	if oldParts.Equal(newParts) {
 		return
 	}
