@@ -146,7 +146,7 @@ func Test_tNode_String(t *testing.T) {
 		{
 			name: "02 - empty node",
 			node: newNode(),
-			want: "\"Node\":\n  isEnd: false\n  isWild: false\n  hits: 0\n",
+			want: "\"Node\":\n  isEnd: false\n  isWild: false\n",
 		},
 		{
 			name: "03 - node with children",
@@ -155,7 +155,7 @@ func Test_tNode_String(t *testing.T) {
 				n.add(tPartsList{"tld"})
 				return n
 			}(),
-			want: "\"Node\":\n  isEnd: false\n  isWild: false\n  hits: 0\n  \"tld\":\n      isEnd: true\n      isWild: false\n      hits: 0\n",
+			want: "\"Node\":\n  isEnd: false\n  isWild: false\n  \"tld\":\n      isEnd: true\n      isWild: false\n",
 		},
 		{
 			name: "04 - node with wildcard",
@@ -164,7 +164,7 @@ func Test_tNode_String(t *testing.T) {
 				n.add(tPartsList{"*"})
 				return n
 			}(),
-			want: "\"Node\":\n  isEnd: false\n  isWild: false\n  hits: 0\n  \"*\":\n      isEnd: false\n      isWild: true\n      hits: 0\n",
+			want: "\"Node\":\n  isEnd: false\n  isWild: false\n  \"*\":\n      isEnd: false\n      isWild: true\n",
 		},
 		{
 			name: "05 - node with multiple children",
@@ -175,7 +175,7 @@ func Test_tNode_String(t *testing.T) {
 				n.add(tPartsList{"tld3"})
 				return n
 			}(),
-			want: "\"Node\":\n  isEnd: false\n  isWild: false\n  hits: 0\n  \"tld\":\n      isEnd: true\n      isWild: false\n      hits: 0\n  \"tld2\":\n      isEnd: true\n      isWild: false\n      hits: 0\n  \"tld3\":\n      isEnd: true\n      isWild: false\n      hits: 0\n",
+			want: "\"Node\":\n  isEnd: false\n  isWild: false\n  \"tld\":\n      isEnd: true\n      isWild: false\n  \"tld2\":\n      isEnd: true\n      isWild: false\n  \"tld3\":\n      isEnd: true\n      isWild: false\n",
 		},
 		{
 			name: "06 - node with multiple levels",
@@ -184,9 +184,8 @@ func Test_tNode_String(t *testing.T) {
 					tChildren: tChildren{"domain": &tNode{isEnd: true}},
 				}},
 			},
-			want: "\"Node\":\n  isEnd: false\n  isWild: false\n  hits: 0\n  \"tld\":\n      isEnd: false\n      isWild: false\n      hits: 0\n      \"domain\":\n          isEnd: true\n          isWild: false\n          hits: 0\n",
+			want: "\"Node\":\n  isEnd: false\n  isWild: false\n  \"tld\":\n      isEnd: false\n      isWild: false\n      \"domain\":\n          isEnd: true\n          isWild: false\n",
 		},
-		/* */
 		{
 			name: "07 - node with multiple children&grandchildren",
 			node: func() *tNode {
@@ -197,7 +196,7 @@ func Test_tNode_String(t *testing.T) {
 				n.add(tPartsList{"tld4", "*"})
 				return n
 			}(),
-			want: "\"Node\":\n  isEnd: false\n  isWild: false\n  hits: 0\n  \"tld1\":\n      isEnd: false\n      isWild: false\n      hits: 0\n      \"domain1\":\n          isEnd: false\n          isWild: false\n          hits: 0\n          \"sub1\":\n              isEnd: false\n              isWild: false\n              hits: 0\n              \"host1\":\n                  isEnd: true\n                  isWild: false\n                  hits: 0\n  \"tld2\":\n      isEnd: false\n      isWild: false\n      hits: 0\n      \"domain2\":\n          isEnd: false\n          isWild: false\n          hits: 0\n          \"sub2\":\n              isEnd: false\n              isWild: false\n              hits: 0\n              \"*\":\n                  isEnd: false\n                  isWild: true\n                  hits: 0\n  \"tld3\":\n      isEnd: false\n      isWild: false\n      hits: 0\n      \"domain3\":\n          isEnd: false\n          isWild: false\n          hits: 0\n          \"*\":\n              isEnd: false\n              isWild: true\n              hits: 0\n  \"tld4\":\n      isEnd: false\n      isWild: false\n      hits: 0\n      \"*\":\n          isEnd: false\n          isWild: true\n          hits: 0\n",
+			want: "\"Node\":\n  isEnd: false\n  isWild: false\n  \"tld1\":\n      isEnd: false\n      isWild: false\n      \"domain1\":\n          isEnd: false\n          isWild: false\n          \"sub1\":\n              isEnd: false\n              isWild: false\n              \"host1\":\n                  isEnd: true\n                  isWild: false\n  \"tld2\":\n      isEnd: false\n      isWild: false\n      \"domain2\":\n          isEnd: false\n          isWild: false\n          \"sub2\":\n              isEnd: false\n              isWild: false\n              \"*\":\n                  isEnd: false\n                  isWild: true\n  \"tld3\":\n      isEnd: false\n      isWild: false\n      \"domain3\":\n          isEnd: false\n          isWild: false\n          \"*\":\n              isEnd: false\n              isWild: true\n  \"tld4\":\n      isEnd: false\n      isWild: false\n      \"*\":\n          isEnd: false\n          isWild: true\n",
 		},
 		/* */
 		// TODO: Add test cases.
@@ -1073,7 +1072,7 @@ func Test_tNode_match(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := tc.node.match(tc.parts, true); got != tc.want {
+			if got := tc.node.match(tc.parts); got != tc.want {
 				t.Errorf("tNode.match() = '%v', want '%v'",
 					got, tc.want)
 			}
@@ -1085,6 +1084,7 @@ func Test_tNode_store(t *testing.T) {
 	tests := []struct {
 		name     string
 		node     *tNode
+		ip       string
 		wantText string
 		wantErr  bool
 	}{
@@ -1092,12 +1092,14 @@ func Test_tNode_store(t *testing.T) {
 		{
 			name:     "01 - save nil node",
 			node:     nil,
+			ip:       "",
 			wantText: "",
 			wantErr:  true,
 		},
 		{
 			name:     "02 - save empty node",
 			node:     newNode(),
+			ip:       "",
 			wantText: "",
 			wantErr:  false,
 		},
@@ -1108,6 +1110,7 @@ func Test_tNode_store(t *testing.T) {
 				n.add(tPartsList{"tld", "domain"})
 				return n
 			}(),
+			ip:       "",
 			wantText: "domain.tld\n",
 			wantErr:  false,
 		},
@@ -1118,6 +1121,7 @@ func Test_tNode_store(t *testing.T) {
 				n.add(tPartsList{"tld", "*"})
 				return n
 			}(),
+			ip:       "",
 			wantText: "*.tld\n",
 			wantErr:  false,
 		},
@@ -1128,6 +1132,7 @@ func Test_tNode_store(t *testing.T) {
 				n.add(tPartsList{"tld", "domain", "host"})
 				return n
 			}(),
+			ip:       "",
 			wantText: "host.domain.tld\n",
 			wantErr:  false,
 		},
@@ -1139,7 +1144,53 @@ func Test_tNode_store(t *testing.T) {
 				n.add(tPartsList{"tld", "domain", "host"})
 				return n
 			}(),
+			ip:       "",
 			wantText: "*.domain.tld\nhost.domain.tld\n",
+			wantErr:  false,
+		},
+		{
+			name: "07 - save node with child",
+			node: func() *tNode {
+				n := newNode()
+				n.add(tPartsList{"tld", "domain"})
+				return n
+			}(),
+			ip:       "0.0.0.0",
+			wantText: "0.0.0.0 domain.tld\n",
+			wantErr:  false,
+		},
+		{
+			name: "08 - save node with wildcard",
+			node: func() *tNode {
+				n := newNode()
+				n.add(tPartsList{"tld", "*"})
+				return n
+			}(),
+			ip:       "0.0.0.0",
+			wantText: "0.0.0.0 *.tld\n",
+			wantErr:  false,
+		},
+		{
+			name: "09 - save node with children",
+			node: func() *tNode {
+				n := newNode()
+				n.add(tPartsList{"tld", "domain", "host"})
+				return n
+			}(),
+			ip:       "0.0.0.0",
+			wantText: "0.0.0.0 host.domain.tld\n",
+			wantErr:  false,
+		},
+		{
+			name: "10 - save node with wildcard and children",
+			node: func() *tNode {
+				n := newNode()
+				n.add(tPartsList{"tld", "domain", "*"})
+				n.add(tPartsList{"tld", "domain", "host"})
+				return n
+			}(),
+			ip:       "0.0.0.0",
+			wantText: "0.0.0.0 *.domain.tld\n0.0.0.0 host.domain.tld\n",
 			wantErr:  false,
 		},
 		/* */
@@ -1149,7 +1200,7 @@ func Test_tNode_store(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			aWriter := &bytes.Buffer{}
-			err := tc.node.store(aWriter)
+			err := tc.node.store(aWriter, tc.ip)
 
 			if (nil != err) != tc.wantErr {
 				t.Errorf("tNode.store() error = %v, wantErr %v",

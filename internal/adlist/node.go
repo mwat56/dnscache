@@ -15,7 +15,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 )
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
@@ -29,21 +28,43 @@ type (
 	// The node is a leaf node if `isEnd` is `true` and it's a wildcard
 	// node if `isWild` is `true`.
 	tNode struct {
-		sync.RWMutex               // barrier for concurrent access
-		tChildren                  // children nodes
-		hits         atomic.Uint32 // number of hits by `match()`
-		isEnd        bool          // `true` if the node is a leaf node
-		isWild       bool          // `true` if the node is a wildcard node
+		sync.RWMutex      // barrier for concurrent access
+		tChildren         // children nodes
+		isEnd        bool // `true` if the node is a leaf node
+		isWild       bool // `true` if the node is a wildcard node
 	}
 )
 
 var (
 	// `ErrNodeNil` is returned if a node or a method's required
 	// argument is `nil`.
-	//
-	// see [tTrie.Load], [tTrie.Store]
 	ErrNodeNil = errors.New("node or argument is nil")
 )
+
+// ---------------------------------------------------------------------------
+// Helper function:
+
+// `pattern2parts()` converts a hostname pattern to a reversed list of parts.
+//
+// The pattern is expected to be a valid FQDN or wildcard pattern, and it's
+// not checked for validity. It is trimmed and converted to lower case for
+// case-insensitive matching.
+//
+// Parameters:
+//   - `aPattern`: The pattern to check and convert.
+//
+// Returns:
+//   - `tPartsList`: The list of parts.
+func pattern2parts(aPattern string) tPartsList {
+	if aPattern = strings.TrimSpace(aPattern); 0 == len(aPattern) {
+		return nil
+	}
+
+	parts := strings.Split(strings.ToLower(aPattern), ".")
+	slices.Reverse(parts)
+
+	return parts
+} // pattern2parts()
 
 // ---------------------------------------------------------------------------
 // `tNode` methods:
@@ -94,7 +115,6 @@ func (n *tNode) add(aPartsList tPartsList) bool {
 } // add()
 
 // `allPatterns()` collects all hostname patterns in the node's tree.
-// node's tree.
 //
 // The patterns are returned in sorted order.
 //
@@ -416,19 +436,20 @@ func (n *tNode) forEach(aFunc func(aNode *tNode)) {
 		// Push children to stack in reverse-sorted order
 		// (to process them in forward order when popped)
 		for idx := len(kids) - 1; 0 <= idx; idx-- {
-			label := kids[idx]
-			stack = append(stack, tStackEntry{node: entry.node.tChildren[label]})
+			stack = append(stack, tStackEntry{
+				node: entry.node.tChildren[kids[idx]],
+			})
 		}
 	}
 } // forEach()
 
-// `Hits()` returns the number of hits on the node.
-//
-// Returns:
-//   - `uint32`: The number of hits on the node.
-func (n *tNode) Hits() uint32 {
-	return n.hits.Load()
-} // Hits()
+// // `Hits()` returns the number of hits on the node.
+// //
+// // Returns:
+// //   - `uint32`: The number of hits on the node.
+// func (n *tNode) Hits() uint32 {
+// 	return n.hits.Load()
+// } // Hits()
 
 // `load()` reads patterns from the reader and adds them to the node's tree.
 //
@@ -470,11 +491,10 @@ func (n *tNode) load(aReader io.Reader) error {
 //
 // Parameters:
 //   - `aPartsList`: The list of parts of the pattern to check.
-//   - `aHitCounter`: `true` if the node's number of hits should be incremented.
 //
 // Returns:
 //   - `bool`: `true` if the pattern is in the node's trie, `false` otherwise.
-func (n *tNode) match(aPartsList tPartsList, aHitCounter bool) bool {
+func (n *tNode) match(aPartsList tPartsList) bool {
 	if (nil == n) || (0 == len(aPartsList)) {
 		return false
 	}
@@ -497,9 +517,6 @@ func (n *tNode) match(aPartsList tPartsList, aHitCounter bool) bool {
 			// No child with that name, check for wildcard
 			if child, ok = n.tChildren["*"]; ok {
 				matched = (child.isWild || child.isEnd)
-			} else {
-				// Remember the last non-wildcard node
-				child = n
 			}
 			break
 		}
@@ -519,36 +536,36 @@ func (n *tNode) match(aPartsList tPartsList, aHitCounter bool) bool {
 		}
 	}
 
-	if matched {
-		if aHitCounter {
-			child.hits.Add(1)
-		}
-
-		return true
-	}
-
-	return false
+	return matched
 } // match()
 
 // `store()` writes all patterns currently in the node to the writer,
 // one hostname pattern per line.
 //
+// If `aIP` is not an empty string, it is prepended to each pattern line.
+// This is useful for writing `hosts(5)` format files instead of a simple
+// list of hostnames.
+//
 // If `aWriter` returns an error during processing, the method stops
 // writing and returns that error to the caller.
 //
-// The method uses a stack to traverse the tree in a depth-first manner,
-// which is more efficient than a recursive approach. The patterns are
-// written in sorted order.
+// The method uses an internal stack to traverse the tree in a depth-first
+// manner, which is more efficient than a recursive approach. The patterns
+// are written in sorted order.
 //
-// The method is not thread-safe in itself but expects to be read-locked
+// The method is not thread-safe in itself but expects to be RLocked
 // by the calling `tTrie` instance.
+//
+// If `aWriter` returns an error during processing, the method stops
+// writing and returns that error to the caller.
 //
 // Parameters:
 //   - `aWriter`: The writer to write the patterns to.
+//   - `aIP`: An IP address to prepend to each pattern line.
 //
 // Returns:
 //   - `error`: `nil` if the patterns were written successfully, the error otherwise.
-func (n *tNode) store(aWriter io.Writer) error {
+func (n *tNode) store(aWriter io.Writer, aIP string) error {
 	if (nil == n) || (nil == aWriter) {
 		return ErrNodeNil
 	}
@@ -575,6 +592,9 @@ func (n *tNode) store(aWriter io.Writer) error {
 				reversed[pLen-1-idx] = part
 			}
 			fqdn := strings.Join(reversed, ".")
+			if 0 < len(aIP) {
+				fqdn = aIP + " " + fqdn
+			}
 
 			// Write to writer with newline
 			if _, err := fmt.Fprintln(aWriter, fqdn); nil != err {
@@ -657,8 +677,8 @@ func (n *tNode) string(aLabel string) string {
 		// If this is the first time visiting this node,
 		// print its details
 		if nil == entry.kids {
-			line := fmt.Sprintf("%q:\n%sisEnd: %v\n%sisWild: %v\n%shits: %d\n",
-				entry.name, indent, entry.node.isEnd, indent, entry.node.isWild, indent, entry.node.hits.Load())
+			line := fmt.Sprintf("%q:\n%sisEnd: %v\n%sisWild: %v\n",
+				entry.name, indent, entry.node.isEnd, indent, entry.node.isWild)
 			builder.WriteString(line)
 
 			// Prepare sorted child keys
@@ -743,30 +763,5 @@ func (n *tNode) update(aOldParts, aNewParts tPartsList) bool {
 
 	return added
 } // update()
-
-// ---------------------------------------------------------------------------
-// Helper function:
-
-// `pattern2parts()` converts a pattern to a reversed list of parts.
-//
-// The pattern is expected to be a valid FQDN or wildcard pattern, and it's
-// not checked for validity. It is trimmed and converted to lower case for
-// case-insensitive matching.
-//
-// Parameters:
-//   - `aPattern`: The pattern to check and convert.
-//
-// Returns:
-//   - `tPartsList`: The list of parts.
-func pattern2parts(aPattern string) tPartsList {
-	if aPattern = strings.TrimSpace(aPattern); 0 == len(aPattern) {
-		return nil
-	}
-
-	parts := strings.Split(strings.ToLower(aPattern), ".")
-	slices.Reverse(parts)
-
-	return parts
-} // pattern2parts()
 
 /* _EoF_ */
