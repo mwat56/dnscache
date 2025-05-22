@@ -7,6 +7,7 @@ Copyright © 2025  M.Watermann, 10247 Berlin, Germany
 package adlist
 
 import (
+	"context"
 	"io"
 	"sync/atomic"
 )
@@ -58,11 +59,12 @@ func newTrie() *tTrie {
 // If `aPattern` is an empty string, the method returns `false`.
 //
 // Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
 //   - `aPattern`: The FQDN pattern to insert.
 //
 // Returns:
 //   - `rOK`: `true` if the pattern was added, `false` otherwise.
-func (t *tTrie) Add(aPattern string) (rOK bool) {
+func (t *tTrie) Add(aCtx context.Context, aPattern string) (rOK bool) {
 	if nil == t || nil == t.root {
 		return
 	}
@@ -71,9 +73,13 @@ func (t *tTrie) Add(aPattern string) (rOK bool) {
 	if 0 == len(parts) {
 		return
 	}
+	// Check for timeout or cancellation
+	if nil != aCtx.Err() {
+		return
+	}
 
 	t.root.Lock()
-	rOK = t.root.add(parts)
+	rOK = t.root.add(aCtx, parts)
 	t.root.Unlock()
 
 	return
@@ -81,15 +87,22 @@ func (t *tTrie) Add(aPattern string) (rOK bool) {
 
 // `AllPatterns()` returns all patterns in the trie.
 //
+// Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
+//
 // Returns:
 //   - `rList`: A list of all patterns in the trie.
-func (t *tTrie) AllPatterns() (rList tPartsList) {
+func (t *tTrie) AllPatterns(aCtx context.Context) (rList tPartsList) {
 	if nil == t || nil == t.root || (0 == len(t.root.tChildren)) {
+		return
+	}
+	// Check for timeout or cancellation
+	if nil != aCtx.Err() {
 		return
 	}
 
 	t.root.RLock()
-	rList = t.root.allPatterns()
+	rList = t.root.allPatterns(aCtx)
 	t.root.RUnlock()
 
 	return
@@ -108,16 +121,23 @@ func (t *tTrie) clone() *tTrie {
 
 // `Count()` returns the number of nodes and patterns in the trie.
 //
+// Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
+//
 // Returns:
 //   - `rNodes`: The number of nodes in the trie.
 //   - `rPatterns`: The number of patterns in the trie.
-func (t *tTrie) Count() (rNodes, rPatterns int) {
+func (t *tTrie) Count(aCtx context.Context) (rNodes, rPatterns int) {
 	if nil == t || nil == t.root {
+		return
+	}
+	// Check for timeout or cancellation
+	if nil != aCtx.Err() {
 		return
 	}
 
 	t.root.RLock()
-	rNodes, rPatterns = t.root.count()
+	rNodes, rPatterns = t.root.count(aCtx)
 	t.root.RUnlock()
 
 	return
@@ -131,17 +151,22 @@ func (t *tTrie) Count() (rNodes, rPatterns int) {
 // If `aPattern` is an empty string, the method returns `false`.
 //
 // Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
 //   - `aPattern`: The pattern to remove.
 //
 // Returns:
 //   - `bool`: `true` if the pattern was found and deleted, `false` otherwise.
-func (t *tTrie) Delete(aPattern string) (rOK bool) {
+func (t *tTrie) Delete(aCtx context.Context, aPattern string) (rOK bool) {
 	if nil == t || nil == t.root {
 		return
 	}
 
 	parts := pattern2parts(aPattern) // reversed list of parts
 	if 0 == len(parts) {
+		return
+	}
+	// Check for timeout or cancellation
+	if nil != aCtx.Err() {
 		return
 	}
 
@@ -153,7 +178,7 @@ func (t *tTrie) Delete(aPattern string) (rOK bool) {
 	// nodes that are not terminal and have no children).
 
 	t.root.Lock()
-	rOK = t.root.delete(parts)
+	rOK = t.root.delete(aCtx, parts)
 	t.root.Unlock()
 
 	return
@@ -202,14 +227,19 @@ func (t *tTrie) Equal(aTrie *tTrie) bool {
 // (i.e. inaccessible).
 //
 // Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
 //   - `aFunc`: The function to call for each node.
-func (t *tTrie) ForEach(aFunc func(aNode *tNode)) {
+func (t *tTrie) ForEach(aCtx context.Context, aFunc func(aNode *tNode)) {
 	if (nil == t) || (nil == t.root) || (nil == aFunc) {
+		return
+	}
+	// Check for timeout or cancellation
+	if nil != aCtx.Err() {
 		return
 	}
 
 	t.root.RLock()
-	t.root.forEach(aFunc)
+	t.root.forEach(aCtx, aFunc)
 	t.root.RUnlock()
 } // ForEach()
 
@@ -239,18 +269,23 @@ func (t *tTrie) ForEach(aFunc func(aNode *tNode)) {
 // and the trie may have not loaded all patterns.
 //
 // Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
 //   - `aReader`: The reader to read the patterns from.
 //
 // Returns:
 //   - `error`: `nil` if the patterns were read successfully, the error otherwise.
 //     see [Store]
-func (t *tTrie) Load(aReader io.Reader) error {
+func (t *tTrie) Load(aCtx context.Context, aReader io.Reader) error {
 	if (nil == t) || (nil == t.root) || (nil == aReader) {
 		return ErrNodeNil
 	}
+	// Check for timeout or cancellation
+	if err := aCtx.Err(); nil != err {
+		return err
+	}
 
 	t.root.Lock()
-	err := t.root.load(aReader)
+	err := t.root.load(aCtx, aReader)
 	t.root.Unlock()
 
 	return err
@@ -264,21 +299,28 @@ func (t *tTrie) Load(aReader io.Reader) error {
 // in a case-insensitive manner.
 //
 // Parameters:
-//   - `aHostname`: The hostname to check.
+//   - `aCtx`: The timeout context to use for the operation.
+//   - `aHostPattern`: The hostname to check.
 //
 // Returns:
 //   - `rOK`: `true` if the hostname matches any pattern, `false` otherwise.
-func (t *tTrie) Match(aHostname string) (rOK bool) {
+func (t *tTrie) Match(aCtx context.Context, aHostPattern string) (rOK bool) {
 	if nil == t || nil == t.root {
 		return
 	}
-	parts := pattern2parts(aHostname)
+
+	parts := pattern2parts(aHostPattern)
 	if 0 == len(parts) {
 		return
 	}
 
+	// Check for timeout or cancellation
+	if nil != aCtx.Err() {
+		return
+	}
+
 	t.root.RLock()
-	rOK = t.root.match(parts)
+	rOK = t.root.match(aCtx, parts)
 	t.root.RUnlock()
 
 	if rOK {
@@ -300,7 +342,7 @@ func (t *tTrie) Metrics() *TMetrics {
 	}
 
 	t.root.RLock()
-	nodes, patterns := t.root.count()
+	nodes, patterns := t.root.count(context.TODO())
 	t.root.RUnlock()
 	t.numNodes.Store(uint32(nodes))       //#nosec G115
 	t.numPatterns.Store(uint32(patterns)) //#nosec G115
@@ -323,18 +365,23 @@ func (t *tTrie) Metrics() *TMetrics {
 // one per line.
 //
 // Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
 //   - `aWriter`: The writer to write the patterns to.
 //
 // Returns:
 //   - `error`: `nil` if the patterns were written successfully, the error otherwise.
 //     see [Load]
-func (t *tTrie) Store(aWriter io.Writer) error {
+func (t *tTrie) Store(aCtx context.Context, aWriter io.Writer) error {
 	if (nil == t) || (nil == t.root) || (nil == aWriter) {
 		return ErrNodeNil
 	}
+	// Check for timeout or cancellation
+	if err := aCtx.Err(); nil != err {
+		return err
+	}
 
 	t.root.RLock()
-	err := t.root.store(aWriter, "")
+	err := t.root.store(aCtx, aWriter, "")
 	t.root.RUnlock()
 
 	return err
@@ -366,12 +413,13 @@ func (t *tTrie) String() (rStr string) {
 // returns `true`.
 //
 // Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
 //   - `aOldPattern`: The old pattern to replace.
 //   - `aNewPattern`: The new pattern to replace the old one with.
 //
 // Returns:
 //   - `rOK`: `true` if the pattern was updated, `false` otherwise.
-func (t *tTrie) Update(aOldPattern, aNewPattern string) (rOK bool) {
+func (t *tTrie) Update(aCtx context.Context, aOldPattern, aNewPattern string) (rOK bool) {
 	if nil == t || nil == t.root {
 		return
 	}
@@ -390,8 +438,13 @@ func (t *tTrie) Update(aOldPattern, aNewPattern string) (rOK bool) {
 		return
 	}
 
+	// Check for timeout or cancellation
+	if nil != aCtx.Err() {
+		return
+	}
+
 	t.root.Lock()
-	rOK = t.root.update(oldParts, newParts)
+	rOK = t.root.update(aCtx, oldParts, newParts)
 	t.root.Unlock()
 
 	return

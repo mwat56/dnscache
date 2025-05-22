@@ -8,6 +8,7 @@ package adlist
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -84,13 +85,14 @@ func pattern2parts(aPattern string) tPartsList {
 // or wildcard).
 //
 // Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
 //   - `aPartsList`: The list of parts of the pattern to add.
 //
 // Returns:
 //   - `bool`: `true` if a pattern was added, `false` otherwise.
-func (n *tNode) add(aPartsList tPartsList) bool {
+func (n *tNode) add(aCtx context.Context, aPartsList tPartsList) (rOK bool) {
 	if (nil == n) || (0 == len(aPartsList)) {
-		return false
+		return
 	}
 	var (
 		depth, added, ends int
@@ -101,6 +103,10 @@ func (n *tNode) add(aPartsList tPartsList) bool {
 	node := n
 	for depth, label = range aPartsList {
 		if _, ok = node.tChildren[label]; !ok {
+			// Check for timeout or cancellation
+			if nil != aCtx.Err() {
+				return
+			}
 			node.tChildren[label] = newNode()
 			added++
 		}
@@ -118,8 +124,9 @@ func (n *tNode) add(aPartsList tPartsList) bool {
 			}
 		}
 	} // for parts
+	rOK = (0 < added) || (0 < ends)
 
-	return (0 < added) || (0 < ends)
+	return
 } // add()
 
 // `allPatterns()` collects all hostname patterns in the node's tree.
@@ -129,9 +136,12 @@ func (n *tNode) add(aPartsList tPartsList) bool {
 // The method uses a stack to traverse the tree in a depth-first manner,
 // which is more efficient than a recursive approach.
 //
+// Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
+//
 // Returns:
 //   - `rList`: A list of all patterns in the node's tree.
-func (n *tNode) allPatterns() (rList tPartsList) {
+func (n *tNode) allPatterns(aCtx context.Context) (rList tPartsList) {
 	if nil == n {
 		return
 	}
@@ -151,6 +161,11 @@ func (n *tNode) allPatterns() (rList tPartsList) {
 	}
 
 	for 0 < len(stack) {
+		// Check for timeout or cancellation
+		if nil != aCtx.Err() {
+			return
+		}
+
 		// Pop the top of the stack
 		current := stack[len(stack)-1]
 		// Remove the top of the stack
@@ -181,6 +196,11 @@ func (n *tNode) allPatterns() (rList tPartsList) {
 		}
 		if 1 < len(kids) {
 			sort.Strings(kids)
+		}
+
+		// Check for timeout or cancellation
+		if nil != aCtx.Err() {
+			return
 		}
 
 		// Push children to stack in reverse-sorted order
@@ -225,10 +245,13 @@ func (n *tNode) clone() *tNode {
 
 // `count()` returns the number of nodes and patterns in the node's tree.
 //
+// Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
+//
 // Returns:
 //   - `rNodes`: The number of nodes in the node's tree.
 //   - `rPatterns`: The number of patterns in the node's tree.
-func (n *tNode) count() (rNodes, rPatterns int) {
+func (n *tNode) count(aCtx context.Context) (rNodes, rPatterns int) {
 	if nil == n {
 		return
 	}
@@ -248,6 +271,11 @@ func (n *tNode) count() (rNodes, rPatterns int) {
 	}
 
 	for 0 < len(stack) {
+		// Check for timeout or cancellation
+		if nil != aCtx.Err() {
+			return
+		}
+
 		// Pop the top of the stack
 		current := stack[len(stack)-1]
 		// Remove the top of the stack
@@ -298,11 +326,12 @@ func (n *tNode) count() (rNodes, rPatterns int) {
 // label to match.
 //
 // Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
 //   - `aPartsList`: The list of parts of the pattern to delete.
 //
 // Returns:
-//   - `bool`: `true` if the node is deleted, `false` otherwise.
-func (n *tNode) delete(aPartsList tPartsList) (rOK bool) {
+//   - `rOK`: `true` if the node is deleted, `false` otherwise.
+func (n *tNode) delete(aCtx context.Context, aPartsList tPartsList) (rOK bool) {
 	if (nil == n) || (0 == len(aPartsList)) {
 		return
 	}
@@ -324,7 +353,6 @@ func (n *tNode) delete(aPartsList tPartsList) (rOK bool) {
 		if !ok {
 			// Pattern does not exist; nothing to delete
 			return
-			//TODO: continue instead?
 		}
 		stack = append(stack, tStackEntry{node: current, label: part})
 		current = child
@@ -334,18 +362,24 @@ func (n *tNode) delete(aPartsList tPartsList) (rOK bool) {
 	current.terminator = 0
 
 	// Backtrack and prune
-	for i := len(stack) - 1; 0 <= i; i-- {
-		parent := stack[i].node
-		label := stack[i].label
+	for idx := len(stack) - 1; 0 <= idx; idx-- {
+		parent := stack[idx].node
+		label := stack[idx].label
 		child := parent.tChildren[label]
 
 		// If child has children stop pruning
-		if 0 != len(child.tChildren) {
+		if 0 < len(child.tChildren) {
 			break
 		}
+
+		// Check for timeout or cancellation
+		if nil != aCtx.Err() {
+			return
+		}
+
 		// Safe to delete this child
-		delete(parent.tChildren, label)
 		putNode(child) // Return the child to the pool
+		delete(parent.tChildren, label)
 		if 0 == len(parent.tChildren) {
 			if isWild = ("*" == label); isWild {
 				parent.terminator = wildMask
@@ -412,8 +446,9 @@ func (n *tNode) Equal(aNode *tNode) bool {
 // `String()` method.
 //
 // Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
 //   - `aFunc`: The function to call for each node.
-func (n *tNode) forEach(aFunc func(aNode *tNode)) {
+func (n *tNode) forEach(aCtx context.Context, aFunc func(aNode *tNode)) {
 	if (nil == n) || (nil == aFunc) {
 		return
 	}
@@ -423,6 +458,11 @@ func (n *tNode) forEach(aFunc func(aNode *tNode)) {
 	stack := []tStackEntry{{node: n}}
 
 	for 0 < len(stack) {
+		// Check for timeout or cancellation
+		if nil != aCtx.Err() {
+			return
+		}
+
 		// Pop from stack
 		entry := stack[len(stack)-1]
 		// Remove from stack
@@ -444,6 +484,11 @@ func (n *tNode) forEach(aFunc func(aNode *tNode)) {
 			sort.Strings(kids)
 		}
 
+		// Check for timeout or cancellation
+		if nil != aCtx.Err() {
+			return
+		}
+
 		// Push children to stack in reverse-sorted order
 		// (to process them in forward order when popped)
 		for idx := len(kids) - 1; 0 <= idx; idx-- {
@@ -457,11 +502,12 @@ func (n *tNode) forEach(aFunc func(aNode *tNode)) {
 // `load()` reads patterns from the reader and adds them to the node's tree.
 //
 // Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
 //   - `aReader`: The reader to read the patterns from.
 //
 // Returns:
 //   - `error`: `nil` if the patterns were read successfully, the error otherwise.
-func (n *tNode) load(aReader io.Reader) error {
+func (n *tNode) load(aCtx context.Context, aReader io.Reader) error {
 	if (nil == n) || (nil == aReader) {
 		return ErrNodeNil
 	}
@@ -484,7 +530,18 @@ func (n *tNode) load(aReader io.Reader) error {
 		}
 
 		// Add the pattern to the node
-		n.add(parts)
+		if ok := n.add(aCtx, parts); !ok {
+			if err := aCtx.Err(); nil != err {
+				return fmt.Errorf("failed to add pattern %q: %w", line, err)
+			}
+
+			return fmt.Errorf("failed to add pattern %q", line)
+		}
+
+		// Check for timeout or cancellation
+		if err := aCtx.Err(); nil != err {
+			return err
+		}
 	}
 
 	return scanner.Err()
@@ -493,33 +550,37 @@ func (n *tNode) load(aReader io.Reader) error {
 // `match()` checks whether the node's tree contains the given pattern.
 //
 // Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
 //   - `aPartsList`: The list of parts of the pattern to check.
 //
 // Returns:
-//   - `bool`: `true` if the pattern is in the node's trie, `false` otherwise.
-func (n *tNode) match(aPartsList tPartsList) bool {
+//   - `rOK`: `true` if the pattern is in the node's trie, `false` otherwise.
+func (n *tNode) match(aCtx context.Context, aPartsList tPartsList) (rOK bool) {
 	if (nil == n) || (0 == len(aPartsList)) {
-		return false
+		return
 	}
 	if 0 == len(n.tChildren) {
 		// No children, thus no match
-		return false
+		return
 	}
 
 	var ( // avoid repeated allocations inside the loop
-		child       *tNode
-		depth       int
-		isEnd       bool
-		label       string
-		matched, ok bool
+		child *tNode
+		depth int
+		isEnd bool
+		label string
+		ok    bool
 	)
 
 	for depth, label = range aPartsList {
+		if nil != aCtx.Err() {
+			return
+		}
 		child, ok = n.tChildren[label]
 		if !ok {
 			// No child with that name, check for wildcard
 			if child, ok = n.tChildren["*"]; ok {
-				matched = (((child.terminator & wildMask) == wildMask) ||
+				rOK = (((child.terminator & wildMask) == wildMask) ||
 					((child.terminator & endMask) == endMask))
 			}
 			break
@@ -528,7 +589,7 @@ func (n *tNode) match(aPartsList tPartsList) bool {
 		n = child
 		// First check for a wildcard match at the current level,
 		if child, ok = n.tChildren["*"]; ok {
-			matched = (((child.terminator & wildMask) == wildMask) ||
+			rOK = (((child.terminator & wildMask) == wildMask) ||
 				((child.terminator & endMask) == endMask))
 			break
 		} else {
@@ -538,12 +599,12 @@ func (n *tNode) match(aPartsList tPartsList) bool {
 		isEnd = ((n.terminator & endMask) == endMask)
 		if ((n.terminator & wildMask) == wildMask) ||
 			(len(aPartsList)-1 == depth) && isEnd {
-			matched = true
+			rOK = true
 			break
 		}
 	}
 
-	return matched
+	return
 } // match()
 
 // `store()` writes all patterns currently in the node to the writer,
@@ -567,12 +628,13 @@ func (n *tNode) match(aPartsList tPartsList) bool {
 // writing and returns that error to the caller.
 //
 // Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
 //   - `aWriter`: The writer to write the patterns to.
 //   - `aIP`: An IP address to prepend to each pattern line.
 //
 // Returns:
 //   - `error`: `nil` if the patterns were written successfully, the error otherwise.
-func (n *tNode) store(aWriter io.Writer, aIP string) error {
+func (n *tNode) store(aCtx context.Context, aWriter io.Writer, aIP string) error {
 	if (nil == n) || (nil == aWriter) {
 		return ErrNodeNil
 	}
@@ -589,6 +651,11 @@ func (n *tNode) store(aWriter io.Writer, aIP string) error {
 		entry := stack[len(stack)-1]
 		// Remove current entry from stack
 		stack = stack[:len(stack)-1]
+
+		// Check for timeout or cancellation
+		if err := aCtx.Err(); nil != err {
+			return err
+		}
 
 		// Process current node
 		if ((entry.node.terminator & endMask) == endMask) ||
@@ -621,6 +688,11 @@ func (n *tNode) store(aWriter io.Writer, aIP string) error {
 		}
 		if 1 < len(kids) {
 			sort.Strings(kids)
+		}
+
+		// Check for timeout or cancellation
+		if err := aCtx.Err(); nil != err {
+			return err
 		}
 
 		// Push children in reverse-sorted order for
@@ -749,12 +821,13 @@ func (n *tNode) String() string {
 // as the new pattern could be added the method returns `true`.
 //
 // Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
 //   - `aOldParts`: The list of parts of the old pattern to update.
 //   - `aNewParts`: The list of parts of the new pattern to update to.
 //
 // Returns:
 //   - `bool`: `true` if the pattern was updated, `false` otherwise.
-func (n *tNode) update(aOldParts, aNewParts tPartsList) bool {
+func (n *tNode) update(aCtx context.Context, aOldParts, aNewParts tPartsList) bool { //TODO: use Context
 	if (nil == n) || (0 == len(aOldParts)) || (0 == len(aNewParts)) || aOldParts.Equal(aNewParts) {
 		return false
 	}
@@ -762,12 +835,12 @@ func (n *tNode) update(aOldParts, aNewParts tPartsList) bool {
 	// Locking is done by the calling `tTrie`
 
 	// 1. Add the new pattern
-	if added = n.add(aNewParts); added {
+	if added = n.add(aCtx, aNewParts); added {
 		// 2. Only after successful addition, delete the old pattern.
 		// This might fail if the old pattern is part of a longer
 		// pattern, but that's not a problem as the new pattern is
 		// already in place.
-		_ = n.delete(aOldParts)
+		_ = n.delete(aCtx, aOldParts)
 	}
 
 	return added

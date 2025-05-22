@@ -7,6 +7,7 @@ Copyright © 2025  M.Watermann, 10247 Berlin, Germany
 package adlist
 
 import (
+	"context"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -71,7 +72,7 @@ func Test_TADlist_AddAllow(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			gotROK := tc.adl.AddAllow(tc.pattern)
+			gotROK := tc.adl.AddAllow(context.TODO(), tc.pattern)
 
 			if gotROK != tc.wantOK {
 				t.Errorf("TADlist.AddAllow() = '%v', want '%v'",
@@ -113,7 +114,7 @@ func Test_TADlist_AddDeny(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			gotOK := tc.adl.AddDeny(tc.pattern)
+			gotOK := tc.adl.AddDeny(context.TODO(), tc.pattern)
 
 			if gotOK != tc.wantOK {
 				t.Errorf("TADlist.AddDeny() = '%v', want '%v'",
@@ -153,7 +154,7 @@ func Test_TADlist_DeleteAllow(t *testing.T) {
 			name: "04 - delete added tld",
 			adl: func() *TADlist {
 				a := NewADlist()
-				a.AddAllow("tld")
+				a.AddAllow(context.TODO(), "tld")
 				return a
 			}(),
 			pattern: "tld",
@@ -163,7 +164,7 @@ func Test_TADlist_DeleteAllow(t *testing.T) {
 			name: "05 - delete added domain.tld",
 			adl: func() *TADlist {
 				a := NewADlist()
-				a.AddAllow("domain.tld")
+				a.AddAllow(context.TODO(), "domain.tld")
 				return a
 			}(),
 			pattern: "domain.tld",
@@ -173,7 +174,7 @@ func Test_TADlist_DeleteAllow(t *testing.T) {
 			name: "06 - delete added sub.domain.tld",
 			adl: func() *TADlist {
 				a := NewADlist()
-				a.AddAllow("sub.domain.tld")
+				a.AddAllow(context.TODO(), "sub.domain.tld")
 				return a
 			}(),
 			pattern: "sub.domain.tld",
@@ -225,7 +226,7 @@ func Test_TADlist_DeleteDeny(t *testing.T) {
 			name: "04 - delete added tld",
 			adl: func() *TADlist {
 				a := NewADlist()
-				a.AddDeny("tld")
+				a.AddDeny(context.TODO(), "tld")
 				return a
 			}(),
 			pattern: "tld",
@@ -235,7 +236,7 @@ func Test_TADlist_DeleteDeny(t *testing.T) {
 			name: "05 - delete added domain.tld",
 			adl: func() *TADlist {
 				a := NewADlist()
-				a.AddDeny("domain.tld")
+				a.AddDeny(context.TODO(), "domain.tld")
 				return a
 			}(),
 			pattern: "domain.tld",
@@ -245,7 +246,7 @@ func Test_TADlist_DeleteDeny(t *testing.T) {
 			name: "06 - delete added sub.domain.tld",
 			adl: func() *TADlist {
 				a := NewADlist()
-				a.AddDeny("sub.domain.tld")
+				a.AddDeny(context.TODO(), "sub.domain.tld")
 				return a
 			}(),
 			pattern: "sub.domain.tld",
@@ -303,9 +304,10 @@ func Test_TADlist_LoadAllow(t *testing.T) {
 		/* */
 		// TODO: Add test cases.
 	}
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.adl.LoadAllow(tc.fName)
+			err := tc.adl.LoadAllow(context.TODO(), tc.fName)
 
 			if (nil != err) != tc.wantErr {
 				t.Errorf("TADlist.LoadAllow() error = '%v', wantErr '%v'",
@@ -355,7 +357,7 @@ func Test_TADlist_LoadDeny(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.adl.LoadDeny(tc.fName)
+			err := tc.adl.LoadDeny(context.TODO(), tc.fName)
 
 			if (nil != err) != tc.wantErr {
 				t.Errorf("TADlist.LoadDeny() error = '%v', wantErr '%v'",
@@ -395,7 +397,7 @@ func Test_TADlist_Match(t *testing.T) {
 			name: "04 - match allow tld",
 			adl: func() *TADlist {
 				a := NewADlist()
-				a.AddAllow("tld")
+				a.AddAllow(context.TODO(), "tld")
 				return a
 			}(),
 			hostname: "tld",
@@ -405,7 +407,7 @@ func Test_TADlist_Match(t *testing.T) {
 			name: "05 - match allow domain.tld",
 			adl: func() *TADlist {
 				a := NewADlist()
-				a.AddAllow("domain.tld")
+				a.AddAllow(context.TODO(), "domain.tld")
 				return a
 			}(),
 			hostname: "domain.tld",
@@ -415,7 +417,7 @@ func Test_TADlist_Match(t *testing.T) {
 			name: "06 - match allow sub.domain.tld",
 			adl: func() *TADlist {
 				a := NewADlist()
-				a.AddAllow("sub.domain.tld")
+				a.AddAllow(context.TODO(), "sub.domain.tld")
 				return a
 			}(),
 			hostname: "sub.domain.tld",
@@ -427,7 +429,7 @@ func Test_TADlist_Match(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := tc.adl.Match(tc.hostname)
+			got := tc.adl.Match(context.TODO(), tc.hostname)
 			if got != tc.want {
 				t.Errorf("TADlist.Match() = %v, want %v",
 					got, tc.want)
@@ -469,7 +471,7 @@ func Test_TADlist_StoreAllow(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.adl.StoreAllow(tc.aFilename)
+			err := tc.adl.StoreAllow(context.TODO(), tc.aFilename)
 
 			if (nil != err) != tc.wantErr {
 				t.Errorf("TADlist.StoreAllow() error = '%v', wantErr '%v'",
@@ -512,7 +514,7 @@ func Test_TADlist_StoreDeny(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.adl.StoreDeny(tc.aFilename)
+			err := tc.adl.StoreDeny(context.TODO(), tc.aFilename)
 
 			if (nil != err) != tc.wantErr {
 				t.Errorf("TADlist.StoreDeny() error = '%v', wantErr '%v'",
@@ -543,7 +545,7 @@ func Test_TADlist_String(t *testing.T) {
 			name: "03 - one allow pattern",
 			adl: func() *TADlist {
 				a := NewADlist()
-				a.AddAllow("tld")
+				a.AddAllow(context.TODO(), "tld")
 				return a
 			}(),
 			want: "Allow:\n\"Trie\":\n  isEnd: false\n  isWild: false\n  \"tld\":\n      isEnd: true\n      isWild: false\n\nDeny:\n\"Trie\":\n  isEnd: false\n  isWild: false\n",
@@ -552,7 +554,7 @@ func Test_TADlist_String(t *testing.T) {
 			name: "04 - one deny pattern",
 			adl: func() *TADlist {
 				a := NewADlist()
-				a.AddDeny("tld")
+				a.AddDeny(context.TODO(), "tld")
 				return a
 			}(),
 			want: "Allow:\n\"Trie\":\n  isEnd: false\n  isWild: false\n\nDeny:\n\"Trie\":\n  isEnd: false\n  isWild: false\n  \"tld\":\n      isEnd: true\n      isWild: false\n",
@@ -561,8 +563,8 @@ func Test_TADlist_String(t *testing.T) {
 			name: "05 - two allow patterns",
 			adl: func() *TADlist {
 				a := NewADlist()
-				a.AddAllow("tld")
-				a.AddAllow("domain.tld")
+				a.AddAllow(context.TODO(), "tld")
+				a.AddAllow(context.TODO(), "domain.tld")
 				return a
 			}(),
 			want: "Allow:\n\"Trie\":\n  isEnd: false\n  isWild: false\n  \"tld\":\n      isEnd: true\n      isWild: false\n      \"domain\":\n          isEnd: true\n          isWild: false\n\nDeny:\n\"Trie\":\n  isEnd: false\n  isWild: false\n",
@@ -571,8 +573,8 @@ func Test_TADlist_String(t *testing.T) {
 			name: "06 - two deny patterns",
 			adl: func() *TADlist {
 				a := NewADlist()
-				a.AddDeny("tld")
-				a.AddDeny("domain.tld")
+				a.AddDeny(context.TODO(), "tld")
+				a.AddDeny(context.TODO(), "domain.tld")
 				return a
 			}(),
 			want: "Allow:\n\"Trie\":\n  isEnd: false\n  isWild: false\n\nDeny:\n\"Trie\":\n  isEnd: false\n  isWild: false\n  \"tld\":\n      isEnd: true\n      isWild: false\n      \"domain\":\n          isEnd: true\n          isWild: false\n",
@@ -633,7 +635,7 @@ func Test_TADlist_UpdateAllow(t *testing.T) {
 			name: "05 - update non-existent old pattern",
 			adl: func() *TADlist {
 				a := NewADlist()
-				a.AddAllow("tld")
+				a.AddAllow(context.TODO(), "tld")
 				return a
 			}(),
 			oldPattern: "domain.tld",
@@ -644,7 +646,7 @@ func Test_TADlist_UpdateAllow(t *testing.T) {
 			name: "06 - update existing old pattern",
 			adl: func() *TADlist {
 				a := NewADlist()
-				a.AddAllow("tld")
+				a.AddAllow(context.TODO(), "tld")
 				return a
 			}(),
 			oldPattern: "tld",
@@ -657,7 +659,7 @@ func Test_TADlist_UpdateAllow(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			gotOK := tc.adl.UpdateAllow(tc.oldPattern, tc.newPattern)
+			gotOK := tc.adl.UpdateAllow(context.TODO(), tc.oldPattern, tc.newPattern)
 			if gotOK != tc.wantOK {
 				t.Errorf("TADlist.UpdateAllow() = '%v', want '%v'",
 					gotOK, tc.wantOK)
@@ -707,7 +709,7 @@ func Test_TADlist_UpdateDeny(t *testing.T) {
 			name: "05 - update non-existent old pattern",
 			adl: func() *TADlist {
 				a := NewADlist()
-				a.AddDeny("tld")
+				a.AddDeny(context.TODO(), "tld")
 				return a
 			}(),
 			oldPattern: "domain.tld",
@@ -718,7 +720,7 @@ func Test_TADlist_UpdateDeny(t *testing.T) {
 			name: "06 - update existing old pattern",
 			adl: func() *TADlist {
 				a := NewADlist()
-				a.AddDeny("tld")
+				a.AddDeny(context.TODO(), "tld")
 				return a
 			}(),
 			oldPattern: "tld",
@@ -728,9 +730,10 @@ func Test_TADlist_UpdateDeny(t *testing.T) {
 		/* */
 		// TODO: Add test cases.
 	}
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			gotOK := tc.adl.UpdateDeny(tc.oldPattern, tc.newPattern)
+			gotOK := tc.adl.UpdateDeny(context.TODO(), tc.oldPattern, tc.newPattern)
 			if gotOK != tc.wantOK {
 				t.Errorf("TADlist.UpdateDeny() = '%v', want '%v'",
 					gotOK, tc.wantOK)
