@@ -9,6 +9,7 @@ package adlist
 import (
 	"context"
 	"io"
+	"runtime"
 	"sync/atomic"
 )
 
@@ -341,23 +342,35 @@ func (t *tTrie) Metrics() *TMetrics {
 		return nil
 	}
 
+	// Get the pool metrics before we do anything else
+	pm := poolMetrics()
+
+	// Force a garbage collection cycle
+	runtime.GC()
+	runtime.Gosched()
+	// Read full memory stats
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
 	t.root.RLock()
 	nodes, patterns := t.root.count(context.TODO())
 	t.root.RUnlock()
 	t.numNodes.Store(uint32(nodes))       //#nosec G115
 	t.numPatterns.Store(uint32(patterns)) //#nosec G115
-	pm := poolMetrics()
 
 	return &TMetrics{
-		PoolCreations: pm.Created,
-		PoolReturns:   pm.Returned,
-		PoolSize:      pm.Size,
-		Nodes:         t.numNodes.Load(),
-		Patterns:      t.numPatterns.Load(),
-		Hits:          t.numHits.Load(),
-		Misses:        t.numMisses.Load(),
-		Reloads:       t.numReloads.Load(),
-		Retries:       t.numRetries.Load(),
+		PoolCreations:  pm.Created,
+		PoolReturns:    pm.Returned,
+		PoolSize:       pm.Size,
+		Nodes:          t.numNodes.Load(),
+		Patterns:       t.numPatterns.Load(),
+		Hits:           t.numHits.Load(),
+		Misses:         t.numMisses.Load(),
+		Reloads:        t.numReloads.Load(),
+		Retries:        t.numRetries.Load(),
+		HeapAllocs:     m.Mallocs,
+		HeapFrees:      m.Frees,
+		GCPauseTotalNs: m.PauseTotalNs,
 	}
 } // Metrics()
 

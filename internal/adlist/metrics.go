@@ -16,7 +16,7 @@ import (
 type (
 	// `TMetrics` contains the metrics data for the node pool and the trie.
 	//
-	// These are the public fields to access the metrics data:
+	// These are the fields to access the metrics data:
 	//
 	//   - `PoolCreations`: Number of nodes created by the pool.
 	//   - `PoolReturns`: Number of nodes returned to the pool.
@@ -27,16 +27,22 @@ type (
 	//   - `Misses`: Number of times a pattern was not found.
 	//   - `Reloads`: Number of times the list was reloaded.
 	//   - `Retries`: Number of times a reload was retried.
+	//   - `HeapAllocs`: Number of heap objects allocated.
+	//   - `HeapFrees`: Number of heap objects freed.
+	//   - `GCPauseTotalNs`: Cumulative nanoseconds in GC stop-the-world pauses.
 	TMetrics struct {
-		PoolCreations uint32
-		PoolReturns   uint32
-		PoolSize      int
-		Nodes         uint32
-		Patterns      uint32
-		Hits          uint32
-		Misses        uint32
-		Reloads       uint32
-		Retries       uint32
+		PoolCreations  uint32
+		PoolReturns    uint32
+		PoolSize       int
+		Nodes          uint32
+		Patterns       uint32
+		Hits           uint32
+		Misses         uint32
+		Reloads        uint32
+		Retries        uint32
+		HeapAllocs     uint64
+		HeapFrees      uint64
+		GCPauseTotalNs uint64
 	}
 )
 
@@ -53,15 +59,18 @@ func (m *TMetrics) clone() *TMetrics {
 	}
 
 	return &TMetrics{
-		PoolCreations: m.PoolCreations,
-		PoolReturns:   m.PoolReturns,
-		PoolSize:      m.PoolSize,
-		Nodes:         m.Nodes,
-		Patterns:      m.Patterns,
-		Hits:          m.Hits,
-		Misses:        m.Misses,
-		Reloads:       m.Reloads,
-		Retries:       m.Retries,
+		PoolCreations:  m.PoolCreations,
+		PoolReturns:    m.PoolReturns,
+		PoolSize:       m.PoolSize,
+		Nodes:          m.Nodes,
+		Patterns:       m.Patterns,
+		Hits:           m.Hits,
+		Misses:         m.Misses,
+		Reloads:        m.Reloads,
+		Retries:        m.Retries,
+		HeapAllocs:     m.HeapAllocs,
+		HeapFrees:      m.HeapFrees,
+		GCPauseTotalNs: m.GCPauseTotalNs,
 	}
 } // clone()
 
@@ -89,6 +98,10 @@ func (m *TMetrics) Equal(aMetrics *TMetrics) bool {
 		(m.Misses == aMetrics.Misses) &&
 		(m.Reloads == aMetrics.Reloads) &&
 		(m.Retries == aMetrics.Retries)
+	//NOTE: Ignore the runtime stats because they vary with every run.
+	// (m.HeapAllocs == aMetrics.HeapAllocs) &&
+	// (m.HeapFrees == aMetrics.HeapFrees) &&
+	// (m.GCPauseTotalNs == aMetrics.GCPauseTotalNs)
 } // Equal()
 
 // `String()` implements the `fmt.Stringer` interface for the metrics data.
@@ -110,6 +123,9 @@ func (m *TMetrics) String() string {
 	fmt.Fprintf(&builder, "Trie.Misses: %d\n", m.Misses)
 	fmt.Fprintf(&builder, "Trie.Reloads: %d\n", m.Reloads)
 	fmt.Fprintf(&builder, "Trie.Retries: %d\n", m.Retries)
+	fmt.Fprintf(&builder, "Heap.Allocs: %d\n", m.HeapAllocs)
+	fmt.Fprintf(&builder, "Heap.Frees: %d\n", m.HeapFrees)
+	fmt.Fprintf(&builder, "GC.PauseTotalNs: %d\n", m.GCPauseTotalNs)
 
 	return builder.String()
 } // String()
