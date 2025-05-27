@@ -9,7 +9,6 @@ package adlist
 import (
 	"bytes"
 	"context"
-	"io"
 	"strings"
 	"testing"
 )
@@ -882,6 +881,7 @@ func Test_tNode_forEach(t *testing.T) {
 	}
 } // Test_tNode_forEach()
 
+/*
 func Test_tNode_load(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -889,7 +889,6 @@ func Test_tNode_load(t *testing.T) {
 		reader  io.Reader
 		wantErr bool
 	}{
-		/* */
 		{
 			name:    "01 - nil node",
 			node:    nil,
@@ -926,7 +925,6 @@ func Test_tNode_load(t *testing.T) {
 			reader:  strings.NewReader("tld\ndomain.tld\nhost.domain.tld\ninvalid\n*.domain.tld"),
 			wantErr: false,
 		},
-		/* */
 		// TODO: Add test cases.
 	}
 
@@ -940,6 +938,7 @@ func Test_tNode_load(t *testing.T) {
 		})
 	}
 } // Test_tNode_load()
+*/
 
 func Test_tNode_match(t *testing.T) {
 	tests := []struct {

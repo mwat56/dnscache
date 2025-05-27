@@ -7,7 +7,6 @@ Copyright © 2025  M.Watermann, 10247 Berlin, Germany
 package adlist
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -46,7 +45,7 @@ type (
 var (
 	// `ErrNodeNil` is returned if a node or a method's required
 	// argument is `nil`.
-	ErrNodeNil = errors.New("node or argument is nil")
+	ErrNodeNil = ADlistError{errors.New("node or argument is nil")}
 )
 
 // ---------------------------------------------------------------------------
@@ -396,43 +395,47 @@ func (n *tNode) delete(aCtx context.Context, aPartsList tPartsList) (rOK bool) {
 
 // `Equal()` checks whether the current node is equal to the given one.
 //
+// NOTE: This method is of no practical use apart from unit-testing.
+//
 // Parameters:
 //   - `aNode`: The node to compare with.
 //
 // Returns:
-//   - `bool`: `true` if the node is equal to the given one, `false` otherwise.
-func (n *tNode) Equal(aNode *tNode) bool {
+//   - `rOK`: `true` if the node is equal to the given one, `false` otherwise.
+func (n *tNode) Equal(aNode *tNode) (rOK bool) {
 	if nil == n {
 		return (nil == aNode)
 	}
 	if nil == aNode {
-		return false
+		return
 	}
 	if n == aNode {
-		return true
+		rOK = true
+		return
 	}
 	// The node's own lock is done by the calling `tTrie`
 	aNode.RLock()
 	defer aNode.RUnlock()
 
 	if n.terminator != aNode.terminator {
-		return false
+		return
 	}
 	if len(n.tChildren) != len(aNode.tChildren) {
-		return false
+		return
 	}
 
 	for label, child := range n.tChildren {
 		otherChild, ok := aNode.tChildren[label]
 		if !ok {
-			return false
+			return
 		}
 		if !child.Equal(otherChild) {
-			return false
+			return
 		}
 	}
+	rOK = true
 
-	return true
+	return
 } // Equal()
 
 // `forEach()` calls the given function for each node in the trie.
@@ -499,6 +502,7 @@ func (n *tNode) forEach(aCtx context.Context, aFunc func(aNode *tNode)) {
 	}
 } // forEach()
 
+/*
 // `load()` reads patterns from the reader and adds them to the node's tree.
 //
 // Parameters:
@@ -546,6 +550,7 @@ func (n *tNode) load(aCtx context.Context, aReader io.Reader) error {
 
 	return scanner.Err()
 } // load()
+*/
 
 // `match()` checks whether the node's tree contains the given pattern.
 //
