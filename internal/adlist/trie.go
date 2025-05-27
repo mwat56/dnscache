@@ -9,8 +9,11 @@ package adlist
 import (
 	"context"
 	"io"
+	"os"
 	"runtime"
+	"strings"
 	"sync/atomic"
+	"time"
 )
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
@@ -35,9 +38,12 @@ type (
 	//   - `U`: Update a pattern [Update],
 	//   - `D`: Delete a pattern [Delete].
 	tTrie struct {
-		_            struct{}
-		tTrieMetrics // embedded metrics for the trie
-		root         *tNode
+		_            struct{}  // placeholder for embedding
+		tTrieMetrics           // embedded metrics for the trie
+		lastLoadTime time.Time // time of the trie's file loading
+		filename     string    // filename for local storage
+		url          string    // URL for the upstream source
+		root         *tNode    // root node of the trie
 	}
 )
 
@@ -49,7 +55,11 @@ type (
 // Returns:
 //   - `*tTrie`: A new `tTrie` instance.
 func newTrie() *tTrie {
-	return &tTrie{root: newNode()}
+	return &tTrie{
+		lastLoadTime: time.Now(),  // time of the trie's file loading
+		filename:     "tTrie.txt", // default filename for local storage
+		root:         newNode(),   // root node of the trie
+	}
 } // newTrie()
 
 // ---------------------------------------------------------------------------
@@ -109,16 +119,21 @@ func (t *tTrie) AllPatterns(aCtx context.Context) (rList tPartsList) {
 	return
 } // AllPatterns()
 
+/*
 // `clone()` returns a deep copy of the trie.
 //
 // Returns:
 //   - `*tTrie`: A deep copy of the trie.
 func (t *tTrie) clone() *tTrie {
 	clone := newTrie()
+
+	t.root.RLock()
 	clone.root = t.root.clone()
+	t.root.RUnlock()
 
 	return clone
 } // clone()
+*/
 
 // `Count()` returns the number of nodes and patterns in the trie.
 //
@@ -187,17 +202,19 @@ func (t *tTrie) Delete(aCtx context.Context, aPattern string) (rOK bool) {
 
 // `Equal()` checks whether the trie is equal to another one.
 //
+// NOTE: This method is of no practical use apart from unit-testing.
+//
 // Parameters:
 //   - `aTrie`: The trie to compare with.
 //
 // Returns:
-//   - `bool`: `true` if the trie is equal to the other one, `false` otherwise.
-func (t *tTrie) Equal(aTrie *tTrie) bool {
+//   - `rOK`: `true` if the trie is equal to the other one, `false` otherwise.
+func (t *tTrie) Equal(aTrie *tTrie) (rOK bool) {
 	if nil == t {
 		return (nil == aTrie)
 	}
 	if nil == aTrie {
-		return false
+		return
 	}
 	if t == aTrie {
 		return true
@@ -206,14 +223,14 @@ func (t *tTrie) Equal(aTrie *tTrie) bool {
 		return (nil == aTrie.root)
 	}
 	if nil == aTrie.root {
-		return false
+		return
 	}
 
 	t.root.RLock()
-	result := t.root.Equal(aTrie.root)
+	rOK = t.root.Equal(aTrie.root)
 	t.root.RUnlock()
 
-	return result
+	return
 } // Equal()
 
 // `ForEach()` calls the given function for each node in the trie.
@@ -244,18 +261,107 @@ func (t *tTrie) ForEach(aCtx context.Context, aFunc func(aNode *tNode)) {
 	t.root.RUnlock()
 } // ForEach()
 
-// // `Hits()` returns the number of hits on the trie nodes.
-// //
-// // Returns:
-// //   - `uint32`: The number of hits on the node.
-// func (t *tTrie) Hits() uint32 {
-// 	if (nil == t) || (nil == t.root) {
-// 		return 0
-// 	}
+const (
+	downExt  = ".down"
+	localExt = ".local"
+)
 
-// 	return t.numHits.Load()
-// } // Hits()
+// `loadFile()` reads hostname patterns (FQDN or wildcards) from `aFilename`
+// and inserts them into the trie.
+//
+// The method ignores empty lines and comment lines (starting with `#` or
+// `;`). No attempt is made to validate the patterns regardless of FQDN or
+// wildcard syntax, neither are the patterns checked for invalid characters
+// or invalid endings.
+//
+// Parameters:
+//   - `aCtx`: The context to use for the operation.
+//   - `aURL`: The URL to download the file from.
+//   - `aFilename`: The absolute path/name to read the patterns from.
+//
+// Returns:
+//   - `error`: `nil` if the patterns were read successfully, the error otherwise.
+func (t *tTrie) loadFile(aCtx context.Context, aURL, aFilename string) (rErr error) {
+	if (nil == t) || (nil == t.root) {
+		return ErrListNil
+	}
+	// The arguments are already checked by the calling `TADlist`,
+	// so we can skip that here.
+	if rErr = aCtx.Err(); nil != rErr {
+		return
+	}
+	var (
+		mime   string
+		loader ILoader
+		saver  ISaver = &tSimpleSaver{}
+	)
 
+	//TODO: Check whether there's a local copy of the file to download and
+	// use that instead of downloading it again. Consult the `lastLoadTime`
+	// Trie field and compare it with the file's modification time.
+
+	if aFilename, rErr = downloadFile(aURL, aFilename+downExt); nil != rErr {
+		return
+	}
+	if rErr = aCtx.Err(); nil != rErr {
+		return
+	}
+	// Check file type and use appropriate loader
+	if mime, rErr = detectFileType(aFilename); nil != rErr {
+		return
+	}
+
+	switch mime {
+	case "text/x-abp":
+		loader = &tABPLoader{}
+	case "text/x-hosts":
+		loader = &tHostsLoader{}
+	case "text/x-hostnames":
+		loader = &tSimpleLoader{}
+	default:
+		_ = os.Remove(aFilename)
+		return ErrUnsupportedMime
+	}
+
+	// Load the file into a new trie
+	newRoot := newTrie()
+	if rErr = loader.Load(aCtx, aFilename, newRoot.root); nil != rErr {
+		return
+	}
+	if rErr = aCtx.Err(); nil != rErr {
+		return
+	}
+
+	//TODO: remove `downExt` from `aFilename`
+	aFilename = strings.TrimSuffix(aFilename, downExt)
+	localName := aFilename + localExt
+
+	// Store the new trie in a local file
+	localFile, err := os.OpenFile(localName, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600) //#nosec g304
+	if nil != err {
+		rErr = err
+		return
+	}
+	defer localFile.Close()
+
+	if rErr = saver.Save(aCtx, localFile, newRoot.root); nil != rErr {
+		return
+	}
+	if rErr = aCtx.Err(); nil != rErr {
+		return
+	}
+
+	newRoot.lastLoadTime = time.Now()
+	newRoot.filename = aFilename
+	newRoot.url = aURL
+	newRoot.root.Lock()
+	t.root = newRoot.root
+	newRoot.root.Unlock()
+
+	return
+} // loadFile()
+
+/*
 // `Load()` reads hostname patterns (FQDN or wildcards) from the reader
 // and inserts them into the list.
 //
@@ -284,13 +390,13 @@ func (t *tTrie) Load(aCtx context.Context, aReader io.Reader) error {
 	if err := aCtx.Err(); nil != err {
 		return err
 	}
-
 	t.root.Lock()
 	err := t.root.load(aCtx, aReader)
+	t.lastLoadTime = time.Now()
 	t.root.Unlock()
-
 	return err
 } // Load()
+*/
 
 // `Match()` checks if the given hostname matches any pattern in the list.
 //
@@ -374,6 +480,59 @@ func (t *tTrie) Metrics() *TMetrics {
 	}
 } // Metrics()
 
+// `storeFile()` writes all patterns currently in the trie to the file.
+//
+// The function uses a temporary file to write the patterns to, and then
+// renames it to the target filename. This way, the target file is always
+// either empty or contains a valid list of patterns. If `aFilename`
+// already exists, it is replaced.
+//
+// Parameters:
+//   - `aCtx`: The context to use for the operation.
+//   - `aFilename`: The absolute path/name to write the patterns to.
+//
+// Returns:
+//   - `error`: `nil` if the patterns were written successfully, the error otherwise.
+func (t *tTrie) storeFile(aCtx context.Context, aFilename string) (rErr error) {
+	if (nil == t) || (nil == t.root) {
+		return ErrListNil
+	}
+
+	tmpName := aFilename + "~"
+	if _, rErr = os.Stat(tmpName); nil == rErr {
+		_ = os.Remove(tmpName)
+	}
+
+	// Check for timeout or cancellation
+	if rErr = aCtx.Err(); nil != rErr {
+		return
+	}
+
+	// Create the temporary file
+	file, err := os.OpenFile(tmpName, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0660) //#nosec G302 G304
+	if nil != err {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	defer file.Close()
+
+	ctx, cancel := context.WithTimeout(aCtx, time.Second<<2)
+	defer cancel() // Ensure cancel is called
+
+	t.root.RLock()
+	rErr = t.Store(ctx, file)
+	t.root.RUnlock()
+
+	if nil != rErr {
+		_ = os.Remove(tmpName)
+	} else {
+		// Replace `aFilename` if it exists
+		rErr = os.Rename(tmpName, aFilename)
+	}
+
+	return
+} // storeFile()
+
 // `Store()` writes all patterns currently in the list to the writer,
 // one per line.
 //
@@ -394,7 +553,7 @@ func (t *tTrie) Store(aCtx context.Context, aWriter io.Writer) error {
 	}
 
 	t.root.RLock()
-	err := t.root.store(aCtx, aWriter, "")
+	err := t.root.store(aCtx, aWriter, "") //TODO: file tye distinction
 	t.root.RUnlock()
 
 	return err

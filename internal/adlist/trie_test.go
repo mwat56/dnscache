@@ -9,8 +9,8 @@ package adlist
 import (
 	"bytes"
 	"context"
-	"io"
-	"strings"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -432,6 +432,7 @@ func Test_tTrie_ForEach(t *testing.T) {
 	}
 } // Test_tTrie_ForEach()
 
+/*
 func Test_tTrie_Load(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -439,7 +440,6 @@ func Test_tTrie_Load(t *testing.T) {
 		reader  io.Reader
 		wantErr bool
 	}{
-		/* */
 		{
 			name:    "01 - nil trie",
 			trie:    nil,
@@ -476,7 +476,6 @@ func Test_tTrie_Load(t *testing.T) {
 			reader:  strings.NewReader("tld\ndomain.tld\nhost.domain.tld\ninvalid\n*.domain.tld"),
 			wantErr: false,
 		},
-		/* */
 		// TODO: Add test cases.
 	}
 
@@ -491,6 +490,78 @@ func Test_tTrie_Load(t *testing.T) {
 		})
 	}
 } // Test_tTrie_Load()
+*/
+
+func Test_tTrie_loadFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	tests := []struct {
+		name    string
+		trie    *tTrie
+		url     string
+		fName   string
+		wantErr bool
+	}{
+		/* */
+		{
+			name:    "01 - nil trie",
+			trie:    nil,
+			fName:   filepath.Join(tmpDir, "test.txt"),
+			wantErr: true,
+		},
+		{
+			name:    "02 - nil root",
+			trie:    &tTrie{},
+			fName:   filepath.Join(tmpDir, "test.txt"),
+			wantErr: true,
+		},
+		{
+			name:    "03 - non-existent file",
+			trie:    newTrie(),
+			fName:   filepath.Join(tmpDir, "doesnotexist.txt"),
+			wantErr: true,
+		},
+		{
+			name: "04 - empty file",
+			trie: newTrie(),
+			url:  "http://example.com/empty.txt",
+			fName: func() string {
+				fName := filepath.Join(tmpDir, "empty.txt")
+				f, _ := os.Create(fName)
+				_, _ = f.WriteString("\n\n\n")
+				_ = f.Close()
+				return fName
+			}(),
+			wantErr: true,
+		},
+		/* */
+		{
+			name: "05 - valid file",
+			trie: newTrie(),
+			url:  "http://example.com/empty.txt",
+			fName: func() string {
+				fName := filepath.Join(tmpDir, "valid.txt")
+				f, _ := os.Create(fName)
+				_, _ = f.WriteString("\n# this file contains only hostnames\nwww.example.com\n")
+				_ = f.Close()
+				return fName
+			}(),
+			wantErr: true,
+		},
+		/* */
+		// TODO: Add test cases.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.trie.loadFile(context.TODO(), tc.url, tc.fName)
+			if (nil != err) != tc.wantErr {
+				t.Errorf("tTrie.loadFile() error = '%v', wantErr '%v'",
+					err, tc.wantErr)
+				return
+			}
+		})
+	}
+} // Test_tTrie_loadFile()
 
 func Test_tTrie_Match(t *testing.T) {
 	tests := []struct {
