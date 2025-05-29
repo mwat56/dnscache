@@ -7,7 +7,6 @@ Copyright © 2025  M.Watermann, 10247 Berlin, Germany
 package adlist
 
 import (
-	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -432,66 +431,6 @@ func Test_tTrie_ForEach(t *testing.T) {
 	}
 } // Test_tTrie_ForEach()
 
-/*
-func Test_tTrie_Load(t *testing.T) {
-	tests := []struct {
-		name    string
-		trie    *tTrie
-		reader  io.Reader
-		wantErr bool
-	}{
-		{
-			name:    "01 - nil trie",
-			trie:    nil,
-			reader:  strings.NewReader("tld"),
-			wantErr: true,
-		},
-		{
-			name:    "02 - nil reader",
-			trie:    newTrie(),
-			reader:  nil,
-			wantErr: true,
-		},
-		{
-			name:    "03 - empty reader",
-			trie:    newTrie(),
-			reader:  strings.NewReader(""),
-			wantErr: false,
-		},
-		{
-			name:    "04 - reader with comments",
-			trie:    newTrie(),
-			reader:  strings.NewReader("# comment\n; comment\n# the next line is no comment\n comment"),
-			wantErr: false,
-		},
-		{
-			name:    "05 - reader with empty lines",
-			trie:    newTrie(),
-			reader:  strings.NewReader("\n\n\n"),
-			wantErr: false,
-		},
-		{
-			name:    "06 - reader with valid data",
-			trie:    newTrie(),
-			reader:  strings.NewReader("tld\ndomain.tld\nhost.domain.tld\ninvalid\n*.domain.tld"),
-			wantErr: false,
-		},
-		// TODO: Add test cases.
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			err := tc.trie.Load(context.TODO(), tc.reader)
-			if (nil != err) != tc.wantErr {
-				t.Errorf("tTrie.Load() error = '%v', wantErr '%v'",
-					err, tc.wantErr)
-				return
-			}
-		})
-	}
-} // Test_tTrie_Load()
-*/
-
 func Test_tTrie_loadFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	tests := []struct {
@@ -694,64 +633,6 @@ func Test_tTrie_Metrics(t *testing.T) {
 		})
 	}
 } // Test_tTrie_Metrics()
-
-func Test_tTrie_Store(t *testing.T) {
-	tests := []struct {
-		name     string
-		trie     *tTrie
-		wantText string
-		wantErr  bool
-	}{
-		/* */
-		{
-			name:     "01 - nil trie",
-			trie:     nil,
-			wantText: "",
-			wantErr:  true,
-		},
-		{
-			name:     "02 - nil root node",
-			trie:     &tTrie{},
-			wantText: "",
-			wantErr:  true,
-		},
-		{
-			name:     "03 - empty trie",
-			trie:     newTrie(),
-			wantText: "",
-			wantErr:  false,
-		},
-		{
-			name: "04 - one pattern",
-			trie: func() *tTrie {
-				t := newTrie()
-				t.root.add(context.TODO(), tPartsList{"tld"})
-				return t
-			}(),
-			wantText: "tld\n",
-			wantErr:  false,
-		},
-		/* */
-		// More tests are done on the node's method.
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			aWriter := &bytes.Buffer{}
-			err := tc.trie.Store(context.TODO(), aWriter)
-
-			if (nil != err) != tc.wantErr {
-				t.Errorf("tTrie.Store() error = '%v', wantErr '%v'",
-					err, tc.wantErr)
-				return
-			}
-			if gotText := aWriter.String(); gotText != tc.wantText {
-				t.Errorf("tTrie.Store() =\n%q\nwant\n%q",
-					gotText, tc.wantText)
-			}
-		})
-	}
-} // Test_tTrie_Store()
 
 func Test_tTrie_String(t *testing.T) {
 	tests := []struct {

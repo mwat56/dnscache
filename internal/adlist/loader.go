@@ -513,7 +513,7 @@ func (ss *tSimpleSaver) Save(aCtx context.Context, aWriter io.Writer, aNode *tNo
 		return ErrLoaderNil
 	}
 
-	return aNode.store(aCtx, aWriter, "")
+	return aNode.store(aCtx, aWriter)
 } // Save()
 
 // ---------------------------------------------------------------------------

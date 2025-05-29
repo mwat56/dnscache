@@ -8,7 +8,6 @@ package adlist
 
 import (
 	"context"
-	"io"
 	"os"
 	"runtime"
 	"strings"
@@ -361,43 +360,6 @@ func (t *tTrie) loadFile(aCtx context.Context, aURL, aFilename string) (rErr err
 	return
 } // loadFile()
 
-/*
-// `Load()` reads hostname patterns (FQDN or wildcards) from the reader
-// and inserts them into the list.
-//
-// The given reader is expected to return one pattern per line. The
-// method ignores empty lines and comment lines (starting with `#` or
-// `;`). No attempt is made to validate the patterns regardless of FQDN
-// or wildcard syntax, neither are the patterns checked for invalid
-// characters or invalid endings.
-//
-// The method returns an error, if any. If it returns an error, the
-// loading process has encountered a problem while reading the patterns
-// and the trie may have not loaded all patterns.
-//
-// Parameters:
-//   - `aCtx`: The timeout context to use for the operation.
-//   - `aReader`: The reader to read the patterns from.
-//
-// Returns:
-//   - `error`: `nil` if the patterns were read successfully, the error otherwise.
-//     see [Store]
-func (t *tTrie) Load(aCtx context.Context, aReader io.Reader) error {
-	if (nil == t) || (nil == t.root) || (nil == aReader) {
-		return ErrNodeNil
-	}
-	// Check for timeout or cancellation
-	if err := aCtx.Err(); nil != err {
-		return err
-	}
-	t.root.Lock()
-	err := t.root.load(aCtx, aReader)
-	t.lastLoadTime = time.Now()
-	t.root.Unlock()
-	return err
-} // Load()
-*/
-
 // `Match()` checks if the given hostname matches any pattern in the list.
 //
 // If aHostname is an empty string, the method returns `false`.
@@ -520,7 +482,7 @@ func (t *tTrie) storeFile(aCtx context.Context, aFilename string) (rErr error) {
 	defer cancel() // Ensure cancel is called
 
 	t.root.RLock()
-	rErr = t.Store(ctx, file)
+	rErr = t.root.store(ctx, file)
 	t.root.RUnlock()
 
 	if nil != rErr {
@@ -532,32 +494,6 @@ func (t *tTrie) storeFile(aCtx context.Context, aFilename string) (rErr error) {
 
 	return
 } // storeFile()
-
-// `Store()` writes all patterns currently in the list to the writer,
-// one per line.
-//
-// Parameters:
-//   - `aCtx`: The timeout context to use for the operation.
-//   - `aWriter`: The writer to write the patterns to.
-//
-// Returns:
-//   - `error`: `nil` if the patterns were written successfully, the error otherwise.
-//     see [Load]
-func (t *tTrie) Store(aCtx context.Context, aWriter io.Writer) error {
-	if (nil == t) || (nil == t.root) || (nil == aWriter) {
-		return ErrNodeNil
-	}
-	// Check for timeout or cancellation
-	if err := aCtx.Err(); nil != err {
-		return err
-	}
-
-	t.root.RLock()
-	err := t.root.store(aCtx, aWriter, "") //TODO: file tye distinction
-	t.root.RUnlock()
-
-	return err
-} // Store()
 
 // `String()` implements the `fmt.Stringer` interface for the trie.
 //

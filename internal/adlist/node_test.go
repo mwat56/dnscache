@@ -881,65 +881,6 @@ func Test_tNode_forEach(t *testing.T) {
 	}
 } // Test_tNode_forEach()
 
-/*
-func Test_tNode_load(t *testing.T) {
-	tests := []struct {
-		name    string
-		node    *tNode
-		reader  io.Reader
-		wantErr bool
-	}{
-		{
-			name:    "01 - nil node",
-			node:    nil,
-			reader:  strings.NewReader("tld"),
-			wantErr: true,
-		},
-		{
-			name:    "02 - nil reader",
-			node:    newNode(),
-			reader:  nil,
-			wantErr: true,
-		},
-		{
-			name:    "03 - empty reader",
-			node:    newNode(),
-			reader:  strings.NewReader(""),
-			wantErr: false,
-		},
-		{
-			name:    "04 - reader with comments",
-			node:    newNode(),
-			reader:  strings.NewReader("# comment\n; comment\n# the next line is no comment\n comment"),
-			wantErr: false,
-		},
-		{
-			name:    "05 - reader with empty lines",
-			node:    newNode(),
-			reader:  strings.NewReader("\n\n\n"),
-			wantErr: false,
-		},
-		{
-			name:    "06 - reader with valid data",
-			node:    newNode(),
-			reader:  strings.NewReader("tld\ndomain.tld\nhost.domain.tld\ninvalid\n*.domain.tld"),
-			wantErr: false,
-		},
-		// TODO: Add test cases.
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			err := tc.node.load(context.TODO(), tc.reader)
-			if (nil != err) != tc.wantErr {
-				t.Errorf("tNode.load() error = '%v', wantErr '%v'",
-					err, tc.wantErr)
-			}
-		})
-	}
-} // Test_tNode_load()
-*/
-
 func Test_tNode_match(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -1074,7 +1015,6 @@ func Test_tNode_store(t *testing.T) {
 	tests := []struct {
 		name     string
 		node     *tNode
-		ip       string
 		wantText string
 		wantErr  bool
 	}{
@@ -1082,14 +1022,12 @@ func Test_tNode_store(t *testing.T) {
 		{
 			name:     "01 - save nil node",
 			node:     nil,
-			ip:       "",
 			wantText: "",
 			wantErr:  true,
 		},
 		{
 			name:     "02 - save empty node",
 			node:     newNode(),
-			ip:       "",
 			wantText: "",
 			wantErr:  false,
 		},
@@ -1100,18 +1038,16 @@ func Test_tNode_store(t *testing.T) {
 				n.add(context.TODO(), tPartsList{"tld", "domain"})
 				return n
 			}(),
-			ip:       "",
 			wantText: "domain.tld\n",
 			wantErr:  false,
 		},
 		{
-			name: "04 - save node with wildcard",
+			name: "04 - save wildcard node",
 			node: func() *tNode {
 				n := newNode()
 				n.add(context.TODO(), tPartsList{"tld", "*"})
 				return n
 			}(),
-			ip:       "",
 			wantText: "*.tld\n",
 			wantErr:  false,
 		},
@@ -1122,65 +1058,18 @@ func Test_tNode_store(t *testing.T) {
 				n.add(context.TODO(), tPartsList{"tld", "domain", "host"})
 				return n
 			}(),
-			ip:       "",
 			wantText: "host.domain.tld\n",
 			wantErr:  false,
 		},
 		{
-			name: "06 - save node with wildcard and children",
+			name: "06 - wildcard save node with children",
 			node: func() *tNode {
 				n := newNode()
 				n.add(context.TODO(), tPartsList{"tld", "domain", "*"})
 				n.add(context.TODO(), tPartsList{"tld", "domain", "host"})
 				return n
 			}(),
-			ip:       "",
 			wantText: "*.domain.tld\nhost.domain.tld\n",
-			wantErr:  false,
-		},
-		{
-			name: "07 - save node with child",
-			node: func() *tNode {
-				n := newNode()
-				n.add(context.TODO(), tPartsList{"tld", "domain"})
-				return n
-			}(),
-			ip:       "0.0.0.0",
-			wantText: "0.0.0.0 domain.tld\n",
-			wantErr:  false,
-		},
-		{
-			name: "08 - save node with wildcard",
-			node: func() *tNode {
-				n := newNode()
-				n.add(context.TODO(), tPartsList{"tld", "*"})
-				return n
-			}(),
-			ip:       "0.0.0.0",
-			wantText: "0.0.0.0 *.tld\n",
-			wantErr:  false,
-		},
-		{
-			name: "09 - save node with children",
-			node: func() *tNode {
-				n := newNode()
-				n.add(context.TODO(), tPartsList{"tld", "domain", "host"})
-				return n
-			}(),
-			ip:       "0.0.0.0",
-			wantText: "0.0.0.0 host.domain.tld\n",
-			wantErr:  false,
-		},
-		{
-			name: "10 - save node with wildcard and children",
-			node: func() *tNode {
-				n := newNode()
-				n.add(context.TODO(), tPartsList{"tld", "domain", "*"})
-				n.add(context.TODO(), tPartsList{"tld", "domain", "host"})
-				return n
-			}(),
-			ip:       "0.0.0.0",
-			wantText: "0.0.0.0 *.domain.tld\n0.0.0.0 host.domain.tld\n",
 			wantErr:  false,
 		},
 		/* */
@@ -1190,7 +1079,7 @@ func Test_tNode_store(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			aWriter := &bytes.Buffer{}
-			err := tc.node.store(context.TODO(), aWriter, tc.ip)
+			err := tc.node.store(context.TODO(), aWriter)
 
 			if (nil != err) != tc.wantErr {
 				t.Errorf("tNode.store() error = %v, wantErr %v",
@@ -1390,5 +1279,31 @@ func Test_pattern2parts(t *testing.T) {
 		})
 	}
 } // Test_pattern2parts()
+
+func isWithWildcard(terminator uint8) bool {
+	return (terminator & wildMask) == wildMask
+} // isWithWildcard()
+
+func isWithZero(terminator uint8) bool {
+	return 0 != (terminator & wildMask)
+} // isWithZero()
+
+func Benchmark_isWithWildcard(b *testing.B) {
+	b.ReportAllocs()
+	for range b.N * 4 {
+		for terminator := range uint8(255) {
+			_ = isWithWildcard(terminator)
+		}
+	}
+} // Benchmark_isWithWildcard()
+
+func Benchmark_isWithZero(b *testing.B) {
+	b.ReportAllocs()
+	for range b.N * 4 {
+		for terminator := range uint8(255) {
+			_ = isWithZero(terminator)
+		}
+	}
+} // Benchmark_isWithZero()
 
 /* _EoF_ */

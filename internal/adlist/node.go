@@ -639,7 +639,7 @@ func (n *tNode) match(aCtx context.Context, aPartsList tPartsList) (rOK bool) {
 //
 // Returns:
 //   - `error`: `nil` if the patterns were written successfully, the error otherwise.
-func (n *tNode) store(aCtx context.Context, aWriter io.Writer, aIP string) error {
+func (n *tNode) store(aCtx context.Context, aWriter io.Writer) error {
 	if (nil == n) || (nil == aWriter) {
 		return ErrNodeNil
 	}
@@ -672,9 +672,6 @@ func (n *tNode) store(aCtx context.Context, aWriter io.Writer, aIP string) error
 				reversed[pLen-1-idx] = part
 			}
 			fqdn := strings.Join(reversed, ".")
-			if 0 < len(aIP) {
-				fqdn = aIP + " " + fqdn
-			}
 
 			// Write to writer with newline
 			if _, err := fmt.Fprintln(aWriter, fqdn); nil != err {
