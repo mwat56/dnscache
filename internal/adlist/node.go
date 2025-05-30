@@ -615,10 +615,6 @@ func (n *tNode) match(aCtx context.Context, aPartsList tPartsList) (rOK bool) {
 // `store()` writes all patterns currently in the node to the writer,
 // one hostname pattern per line.
 //
-// If `aIP` is not an empty string, it is prepended to each pattern line.
-// This is useful for writing `hosts(5)` format files instead of a simple
-// list of hostnames.
-//
 // If `aWriter` returns an error during processing, the method stops
 // writing and returns that error to the caller.
 //
@@ -635,7 +631,6 @@ func (n *tNode) match(aCtx context.Context, aPartsList tPartsList) (rOK bool) {
 // Parameters:
 //   - `aCtx`: The timeout context to use for the operation.
 //   - `aWriter`: The writer to write the patterns to.
-//   - `aIP`: An IP address to prepend to each pattern line.
 //
 // Returns:
 //   - `error`: `nil` if the patterns were written successfully, the error otherwise.

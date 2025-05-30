@@ -455,19 +455,19 @@ func (t *tTrie) Metrics() *TMetrics {
 //
 // Returns:
 //   - `error`: `nil` if the patterns were written successfully, the error otherwise.
-func (t *tTrie) storeFile(aCtx context.Context, aFilename string) (rErr error) {
+func (t *tTrie) storeFile(aCtx context.Context, aFilename string) error {
 	if (nil == t) || (nil == t.root) {
 		return ErrListNil
 	}
 
 	tmpName := aFilename + "~"
-	if _, rErr = os.Stat(tmpName); nil == rErr {
+	if _, err := os.Stat(tmpName); nil == err {
 		_ = os.Remove(tmpName)
 	}
 
 	// Check for timeout or cancellation
-	if rErr = aCtx.Err(); nil != rErr {
-		return
+	if err := aCtx.Err(); nil != err {
+		return err
 	}
 
 	// Create the temporary file
@@ -482,17 +482,17 @@ func (t *tTrie) storeFile(aCtx context.Context, aFilename string) (rErr error) {
 	defer cancel() // Ensure cancel is called
 
 	t.root.RLock()
-	rErr = t.root.store(ctx, file)
+	err = t.root.store(ctx, file)
 	t.root.RUnlock()
 
-	if nil != rErr {
+	if nil != err {
 		_ = os.Remove(tmpName)
 	} else {
 		// Replace `aFilename` if it exists
-		rErr = os.Rename(tmpName, aFilename)
+		err = os.Rename(tmpName, aFilename)
 	}
 
-	return
+	return err
 } // storeFile()
 
 // `String()` implements the `fmt.Stringer` interface for the trie.

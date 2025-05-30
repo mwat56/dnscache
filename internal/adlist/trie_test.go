@@ -634,6 +634,80 @@ func Test_tTrie_Metrics(t *testing.T) {
 	}
 } // Test_tTrie_Metrics()
 
+func Test_tTrie_storeFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	tests := []struct {
+		name      string
+		trie      *tTrie
+		aFilename string
+		wantErr   bool
+	}{
+		/* */
+		{
+			name:      "01 - nil trie",
+			trie:      nil,
+			aFilename: filepath.Join(tmpDir, "test-01.txt"),
+			wantErr:   true,
+		},
+		{
+			name:      "02 - nil root",
+			trie:      &tTrie{},
+			aFilename: filepath.Join(tmpDir, "test-02.txt"),
+			wantErr:   true,
+		},
+		{
+			name:      "03 - empty filename",
+			trie:      newTrie(),
+			aFilename: "",
+			wantErr:   true,
+		},
+		{
+			name:      "04 - valid filename",
+			trie:      newTrie(),
+			aFilename: filepath.Join(tmpDir, "test-04.txt"),
+			wantErr:   false,
+		},
+		{
+			name: "05 - valid filename, with patterns",
+			trie: func() *tTrie {
+				t := newTrie()
+				t.root.add(context.TODO(), tPartsList{"tld", "domain", "host"})
+				return t
+			}(),
+			aFilename: filepath.Join(tmpDir, "test-05.txt"),
+			wantErr:   false,
+		},
+		{
+			name: "06 - valid filename, with multiple patterns",
+			trie: func() *tTrie {
+				t := newTrie()
+				t.root.add(context.TODO(), tPartsList{"tld"})
+				t.root.add(context.TODO(), tPartsList{"tld2", "domain"})
+				t.root.add(context.TODO(), tPartsList{"tld", "domain", "host"})
+				t.root.add(context.TODO(), tPartsList{"tld2"})
+				t.root.add(context.TODO(), tPartsList{"tld", "domain"})
+				t.root.add(context.TODO(), tPartsList{"tld2", "domain", "host"})
+				return t
+			}(),
+			aFilename: filepath.Join(tmpDir, "test-06.txt"),
+			wantErr:   false,
+		},
+		/* */
+		// TODO: Add test cases.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.trie.storeFile(context.TODO(), tc.aFilename)
+
+			if (nil != err) != tc.wantErr {
+				t.Errorf("tTrie.storeFile() error = '%v', wantErr '%v'",
+					err, tc.wantErr)
+			}
+		})
+	}
+} // Test_tTrie_storeFile()
+
 func Test_tTrie_String(t *testing.T) {
 	tests := []struct {
 		name string
