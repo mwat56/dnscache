@@ -18,7 +18,7 @@ import (
 func Test_tTrie_Equal(t *testing.T) {
 	tc1 := newTrie()
 	tc2 := newTrie()
-	tc2.root.add(context.TODO(), tPartsList{"tld"})
+	tc2.root.node.add(context.TODO(), tPartsList{"tld"})
 
 	tests := []struct {
 		name  string
@@ -171,7 +171,7 @@ func Test_tTrie_AllPatterns(t *testing.T) {
 			name: "04 - one pattern",
 			trie: func() *tTrie {
 				t := newTrie()
-				t.root.add(context.TODO(), tPartsList{"tld"})
+				t.root.node.add(context.TODO(), tPartsList{"tld"})
 				return t
 			}(),
 			wantList: tPartsList{"tld"},
@@ -180,8 +180,8 @@ func Test_tTrie_AllPatterns(t *testing.T) {
 			name: "05 - two patterns",
 			trie: func() *tTrie {
 				t := newTrie()
-				t.root.add(context.TODO(), tPartsList{"tld"})
-				t.root.add(context.TODO(), tPartsList{"tld", "domain"})
+				t.root.node.add(context.TODO(), tPartsList{"tld"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain"})
 				return t
 			}(),
 			wantList: tPartsList{"tld", "domain.tld"},
@@ -190,9 +190,9 @@ func Test_tTrie_AllPatterns(t *testing.T) {
 			name: "06 - three patterns",
 			trie: func() *tTrie {
 				t := newTrie()
-				t.root.add(context.TODO(), tPartsList{"tld"})
-				t.root.add(context.TODO(), tPartsList{"tld", "domain"})
-				t.root.add(context.TODO(), tPartsList{"tld", "domain", "sub"})
+				t.root.node.add(context.TODO(), tPartsList{"tld"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "sub"})
 				return t
 			}(),
 			wantList: tPartsList{"tld", "domain.tld", "sub.domain.tld"},
@@ -253,7 +253,7 @@ func Test_tTrie_Delete(t *testing.T) {
 			name: "04 - delete tld",
 			trie: func() *tTrie {
 				t := newTrie()
-				t.root.add(context.TODO(), tPartsList{"tld"})
+				t.root.node.add(context.TODO(), tPartsList{"tld"})
 				return t
 			}(),
 			pattern:  "tld",
@@ -264,7 +264,7 @@ func Test_tTrie_Delete(t *testing.T) {
 			name: "05 - delete domain.tld",
 			trie: func() *tTrie {
 				t := newTrie()
-				t.root.add(context.TODO(), tPartsList{"tld", "domain"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain"})
 				return t
 			}(),
 			pattern:  "domain.tld",
@@ -275,8 +275,8 @@ func Test_tTrie_Delete(t *testing.T) {
 			name: "06 - delete host.domain.tld",
 			trie: func() *tTrie {
 				t := newTrie()
-				t.root.add(context.TODO(), tPartsList{"tld", "domain", "host"})
-				t.root.add(context.TODO(), tPartsList{"tld", "domain", "*"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "host"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "*"})
 				return t
 			}(),
 			pattern:  "host.domain.tld",
@@ -286,8 +286,8 @@ func Test_tTrie_Delete(t *testing.T) {
 			name: "07 - delete *.domain.tld",
 			trie: func() *tTrie {
 				t := newTrie()
-				t.root.add(context.TODO(), tPartsList{"tld", "domain", "host"})
-				t.root.add(context.TODO(), tPartsList{"tld", "domain", "*"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "host"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "*"})
 				return t
 			}(),
 			pattern:  "*.domain.tld",
@@ -338,7 +338,7 @@ func Test_tTrie_Count(t *testing.T) {
 			name: "04 - one pattern",
 			trie: func() *tTrie {
 				t := newTrie()
-				t.root.add(context.TODO(), tPartsList{"tld"})
+				t.root.node.add(context.TODO(), tPartsList{"tld"})
 				return t
 			}(),
 			wantNodes:    2, // root + tld
@@ -348,8 +348,8 @@ func Test_tTrie_Count(t *testing.T) {
 			name: "05 - two patterns",
 			trie: func() *tTrie {
 				t := newTrie()
-				t.root.add(context.TODO(), tPartsList{"tld"})
-				t.root.add(context.TODO(), tPartsList{"tld", "domain"})
+				t.root.node.add(context.TODO(), tPartsList{"tld"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain"})
 				return t
 			}(),
 			wantNodes:    3, // root + tld + domain.tld
@@ -359,9 +359,9 @@ func Test_tTrie_Count(t *testing.T) {
 			name: "06 - three patterns",
 			trie: func() *tTrie {
 				t := newTrie()
-				t.root.add(context.TODO(), tPartsList{"tld"})
-				t.root.add(context.TODO(), tPartsList{"tld", "domain"})
-				t.root.add(context.TODO(), tPartsList{"tld", "domain", "sub"})
+				t.root.node.add(context.TODO(), tPartsList{"tld"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "sub"})
 				return t
 			}(),
 			wantNodes:    4, // root + tld + domain.tld + sub.domain.tld
@@ -371,8 +371,8 @@ func Test_tTrie_Count(t *testing.T) {
 			name: "07 - two patterns incl. wildcard",
 			trie: func() *tTrie {
 				t := newTrie()
-				t.root.add(context.TODO(), tPartsList{"tld", "domain", "sub"})
-				t.root.add(context.TODO(), tPartsList{"tld", "domain", "sub", "*"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "sub"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "sub", "*"})
 				return t
 			}(),
 			wantNodes:    5, // root + 4 parts
@@ -431,7 +431,76 @@ func Test_tTrie_ForEach(t *testing.T) {
 	}
 } // Test_tTrie_ForEach()
 
-func Test_tTrie_loadFile(t *testing.T) {
+func Test_tTrie_loadLocal(t *testing.T) {
+	tmpDir := t.TempDir()
+	tests := []struct {
+		name    string
+		trie    *tTrie
+		fName   string
+		wantErr bool
+	}{
+		/* * /
+		{
+			name:    "01 - nil trie",
+			trie:    nil,
+			fName:   filepath.Join(tmpDir, "test.txt"),
+			wantErr: true,
+		},
+		{
+			name:    "02 - nil root",
+			trie:    &tTrie{},
+			fName:   filepath.Join(tmpDir, "test.txt"),
+			wantErr: true,
+		},
+		{
+			name:    "03 - non-existent file",
+			trie:    newTrie(),
+			fName:   filepath.Join(tmpDir, "doesnotexist.txt"),
+			wantErr: true,
+		},
+		/* */
+		{
+			name: "04 - empty file",
+			trie: newTrie(),
+			fName: func() string {
+				fName := filepath.Join(tmpDir, "empty-04.txt")
+				f, _ := os.Create(fName)
+				_, _ = f.WriteString("\n\n\n")
+				_ = f.Close()
+				return fName
+			}(),
+			wantErr: false,
+		},
+		/* * /
+		{
+			name: "05 - valid file",
+			trie: newTrie(),
+			fName: func() string {
+				fName := filepath.Join(tmpDir, "valid.txt")
+				f, _ := os.Create(fName)
+				_, _ = f.WriteString("\n# this file contains only hostnames\nwww.example.com\n")
+				_ = f.Close()
+				return fName
+			}(),
+			wantErr: false,
+		},
+		/* */
+		// TODO: Add test cases.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.trie.loadLocal(context.TODO(), tc.fName)
+
+			if (nil != err) != tc.wantErr {
+				t.Errorf("tTrie.loadLocal() error = '%v', wantErr '%v'",
+					err, tc.wantErr)
+			}
+		})
+	}
+} // Test_tTrie_loadLocal()
+
+func Test_tTrie_loadRemote(t *testing.T) {
 	tmpDir := t.TempDir()
 	tests := []struct {
 		name    string
@@ -492,15 +561,14 @@ func Test_tTrie_loadFile(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.trie.loadFile(context.TODO(), tc.url, tc.fName)
+			err := tc.trie.loadRemote(context.TODO(), tc.url, tc.fName)
 			if (nil != err) != tc.wantErr {
-				t.Errorf("tTrie.loadFile() error = '%v', wantErr '%v'",
+				t.Errorf("tTrie.loadRemote() error = '%v', wantErr '%v'",
 					err, tc.wantErr)
-				return
 			}
 		})
 	}
-} // Test_tTrie_loadFile()
+} // Test_tTrie_loadRemote()
 
 func Test_tTrie_Match(t *testing.T) {
 	tests := []struct {
@@ -538,7 +606,7 @@ func Test_tTrie_Match(t *testing.T) {
 			name: "05 - match tld",
 			trie: func() *tTrie {
 				t := newTrie()
-				t.root.add(context.TODO(), tPartsList{"tld"})
+				t.root.node.add(context.TODO(), tPartsList{"tld"})
 				return t
 			}(),
 			pattern:  "tld",
@@ -671,7 +739,7 @@ func Test_tTrie_storeFile(t *testing.T) {
 			name: "05 - valid filename, with patterns",
 			trie: func() *tTrie {
 				t := newTrie()
-				t.root.add(context.TODO(), tPartsList{"tld", "domain", "host"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "host"})
 				return t
 			}(),
 			aFilename: filepath.Join(tmpDir, "test-05.txt"),
@@ -681,12 +749,12 @@ func Test_tTrie_storeFile(t *testing.T) {
 			name: "06 - valid filename, with multiple patterns",
 			trie: func() *tTrie {
 				t := newTrie()
-				t.root.add(context.TODO(), tPartsList{"tld"})
-				t.root.add(context.TODO(), tPartsList{"tld2", "domain"})
-				t.root.add(context.TODO(), tPartsList{"tld", "domain", "host"})
-				t.root.add(context.TODO(), tPartsList{"tld2"})
-				t.root.add(context.TODO(), tPartsList{"tld", "domain"})
-				t.root.add(context.TODO(), tPartsList{"tld2", "domain", "host"})
+				t.root.node.add(context.TODO(), tPartsList{"tld"})
+				t.root.node.add(context.TODO(), tPartsList{"tld2", "domain"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "host"})
+				t.root.node.add(context.TODO(), tPartsList{"tld2"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain"})
+				t.root.node.add(context.TODO(), tPartsList{"tld2", "domain", "host"})
 				return t
 			}(),
 			aFilename: filepath.Join(tmpDir, "test-06.txt"),
@@ -729,7 +797,7 @@ func Test_tTrie_String(t *testing.T) {
 			name: "03 - trie with root",
 			trie: func() *tTrie {
 				t := newTrie()
-				t.root.add(context.TODO(), tPartsList{"tld"})
+				t.root.node.add(context.TODO(), tPartsList{"tld"})
 				return t
 			}(),
 			want: "\"Trie\":\n  isEnd: false\n  isWild: false\n  \"tld\":\n      isEnd: true\n      isWild: false\n",
@@ -738,7 +806,7 @@ func Test_tTrie_String(t *testing.T) {
 			name: "04 - trie with root and children",
 			trie: func() *tTrie {
 				t := newTrie()
-				t.root.add(context.TODO(), tPartsList{"tld", "domain"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain"})
 				return t
 			}(),
 			want: "\"Trie\":\n  isEnd: false\n  isWild: false\n  \"tld\":\n      isEnd: false\n      isWild: false\n      \"domain\":\n          isEnd: true\n          isWild: false\n",
@@ -747,7 +815,7 @@ func Test_tTrie_String(t *testing.T) {
 			name: "05 - trie with root, child and wildcard",
 			trie: func() *tTrie {
 				t := newTrie()
-				t.root.add(context.TODO(), tPartsList{"*", "domain"})
+				t.root.node.add(context.TODO(), tPartsList{"*", "domain"})
 				return t
 			}(),
 			want: "\"Trie\":\n  isEnd: false\n  isWild: false\n  \"*\":\n      isEnd: false\n      isWild: true\n      \"domain\":\n          isEnd: true\n          isWild: false\n",
@@ -756,7 +824,7 @@ func Test_tTrie_String(t *testing.T) {
 			name: "06 - trie with root and children and wildcard",
 			trie: func() *tTrie {
 				t := newTrie()
-				t.root.add(context.TODO(), tPartsList{"tld", "domain", "*"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "*"})
 				return t
 			}(),
 			want: "\"Trie\":\n  isEnd: false\n  isWild: false\n  \"tld\":\n      isEnd: false\n      isWild: false\n      \"domain\":\n          isEnd: false\n          isWild: false\n          \"*\":\n              isEnd: false\n              isWild: true\n",
@@ -765,7 +833,7 @@ func Test_tTrie_String(t *testing.T) {
 			name: "07 - trie with root and child and wildcard and child",
 			trie: func() *tTrie {
 				t := newTrie()
-				t.root.add(context.TODO(), tPartsList{"tld", "domain", "*", "sub"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "*", "sub"})
 				return t
 			}(),
 			want: "\"Trie\":\n  isEnd: false\n  isWild: false\n  \"tld\":\n      isEnd: false\n      isWild: false\n      \"domain\":\n          isEnd: false\n          isWild: false\n          \"*\":\n              isEnd: false\n              isWild: true\n              \"sub\":\n                  isEnd: true\n                  isWild: false\n",
@@ -832,7 +900,7 @@ func Test_tTrie_Update(t *testing.T) {
 			name: "06 - update tld",
 			trie: func() *tTrie {
 				t := newTrie()
-				t.root.add(context.TODO(), tPartsList{"tld"})
+				t.root.node.add(context.TODO(), tPartsList{"tld"})
 				return t
 			}(),
 			oldPattern: "tld",

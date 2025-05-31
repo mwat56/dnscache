@@ -11,6 +11,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -29,6 +30,17 @@ type (
 	}
 
 	//
+	// `tRoot` is the root node of the trie.
+	//
+	// The root node is a special case as it doesn't have a label but
+	// can have multiple children (i.e. the TLDs). Also it provides the
+	// Mutex to use for locking access to the trie.
+	tRoot struct {
+		sync.RWMutex // barrier for concurrent access
+		node         *tNode
+	}
+
+	//
 	// `tTrie` is a thread-safe trie for FQDN wildcards. It
 	// basically provides a CRUD interface for FQDN patterns.
 	//
@@ -42,7 +54,7 @@ type (
 		lastLoadTime time.Time // time of the trie's file loading
 		filename     string    // filename for local storage
 		url          string    // URL for the upstream source
-		root         *tNode    // root node of the trie
+		root         tRoot     // root node of the trie
 	}
 )
 
@@ -55,9 +67,11 @@ type (
 //   - `*tTrie`: A new `tTrie` instance.
 func newTrie() *tTrie {
 	return &tTrie{
-		lastLoadTime: time.Now(),  // time of the trie's file loading
-		filename:     "tTrie.txt", // default filename for local storage
-		root:         newNode(),   // root node of the trie
+		lastLoadTime: time.Now(), // time of the trie's file loading
+		filename:     "Trie.txt", // default filename for local storage
+		root: tRoot{
+			node: newNode(),
+		}, // root node of the trie
 	}
 } // newTrie()
 
@@ -75,7 +89,7 @@ func newTrie() *tTrie {
 // Returns:
 //   - `rOK`: `true` if the pattern was added, `false` otherwise.
 func (t *tTrie) Add(aCtx context.Context, aPattern string) (rOK bool) {
-	if nil == t || nil == t.root {
+	if nil == t {
 		return
 	}
 
@@ -89,7 +103,7 @@ func (t *tTrie) Add(aCtx context.Context, aPattern string) (rOK bool) {
 	}
 
 	t.root.Lock()
-	rOK = t.root.add(aCtx, parts)
+	rOK = t.root.node.add(aCtx, parts)
 	t.root.Unlock()
 
 	return
@@ -103,7 +117,7 @@ func (t *tTrie) Add(aCtx context.Context, aPattern string) (rOK bool) {
 // Returns:
 //   - `rList`: A list of all patterns in the trie.
 func (t *tTrie) AllPatterns(aCtx context.Context) (rList tPartsList) {
-	if nil == t || nil == t.root || (0 == len(t.root.tChildren)) {
+	if (nil == t) || (nil == t.root.node) || (0 == len(t.root.node.tChildren)) {
 		return
 	}
 	// Check for timeout or cancellation
@@ -112,7 +126,7 @@ func (t *tTrie) AllPatterns(aCtx context.Context) (rList tPartsList) {
 	}
 
 	t.root.RLock()
-	rList = t.root.allPatterns(aCtx)
+	rList = t.root.node.allPatterns(aCtx)
 	t.root.RUnlock()
 
 	return
@@ -126,9 +140,9 @@ func (t *tTrie) AllPatterns(aCtx context.Context) (rList tPartsList) {
 func (t *tTrie) clone() *tTrie {
 	clone := newTrie()
 
-	t.root.RLock()
-	clone.root = t.root.clone()
-	t.root.RUnlock()
+	t.tRoot.RLock()
+	clone.tRoot = t.tRoot.clone()
+	t.tRoot.RUnlock()
 
 	return clone
 } // clone()
@@ -143,7 +157,7 @@ func (t *tTrie) clone() *tTrie {
 //   - `rNodes`: The number of nodes in the trie.
 //   - `rPatterns`: The number of patterns in the trie.
 func (t *tTrie) Count(aCtx context.Context) (rNodes, rPatterns int) {
-	if nil == t || nil == t.root {
+	if nil == t || nil == t.root.node {
 		return
 	}
 	// Check for timeout or cancellation
@@ -152,7 +166,7 @@ func (t *tTrie) Count(aCtx context.Context) (rNodes, rPatterns int) {
 	}
 
 	t.root.RLock()
-	rNodes, rPatterns = t.root.count(aCtx)
+	rNodes, rPatterns = t.root.node.count(aCtx)
 	t.root.RUnlock()
 
 	return
@@ -172,7 +186,7 @@ func (t *tTrie) Count(aCtx context.Context) (rNodes, rPatterns int) {
 // Returns:
 //   - `bool`: `true` if the pattern was found and deleted, `false` otherwise.
 func (t *tTrie) Delete(aCtx context.Context, aPattern string) (rOK bool) {
-	if nil == t || nil == t.root {
+	if nil == t || nil == t.root.node {
 		return
 	}
 
@@ -193,7 +207,7 @@ func (t *tTrie) Delete(aCtx context.Context, aPattern string) (rOK bool) {
 	// nodes that are not terminal and have no children).
 
 	t.root.Lock()
-	rOK = t.root.delete(aCtx, parts)
+	rOK = t.root.node.delete(aCtx, parts)
 	t.root.Unlock()
 
 	return
@@ -218,15 +232,9 @@ func (t *tTrie) Equal(aTrie *tTrie) (rOK bool) {
 	if t == aTrie {
 		return true
 	}
-	if nil == t.root {
-		return (nil == aTrie.root)
-	}
-	if nil == aTrie.root {
-		return
-	}
 
 	t.root.RLock()
-	rOK = t.root.Equal(aTrie.root)
+	rOK = t.root.node.Equal(aTrie.root.node)
 	t.root.RUnlock()
 
 	return
@@ -247,7 +255,7 @@ func (t *tTrie) Equal(aTrie *tTrie) (rOK bool) {
 //   - `aCtx`: The timeout context to use for the operation.
 //   - `aFunc`: The function to call for each node.
 func (t *tTrie) ForEach(aCtx context.Context, aFunc func(aNode *tNode)) {
-	if (nil == t) || (nil == t.root) || (nil == aFunc) {
+	if (nil == t) || (nil == t.root.node) || (nil == aFunc) {
 		return
 	}
 	// Check for timeout or cancellation
@@ -256,16 +264,52 @@ func (t *tTrie) ForEach(aCtx context.Context, aFunc func(aNode *tNode)) {
 	}
 
 	t.root.RLock()
-	t.root.forEach(aCtx, aFunc)
+	t.root.node.forEach(aCtx, aFunc)
 	t.root.RUnlock()
 } // ForEach()
+
+// `loadLocal()` reads hostname patterns (FQDN or wildcards) from `aFilename`
+// and inserts them into the current trie.
+//
+// The method ignores empty lines and comment lines (starting with `#` or
+// `;`). No attempt is made to validate the patterns regardless of FQDN or
+// wildcard syntax, neither are the patterns checked for invalid characters
+// or invalid endings.
+//
+// Parameters:
+//   - `aCtx`: The context to use for the operation.
+//   - `aFilename`: The absolute path/name to read the patterns from.
+//
+// Returns:
+//   - `error`: `nil` if the patterns were read successfully, the error otherwise.
+func (t *tTrie) loadLocal(aCtx context.Context, aFilename string) (rErr error) {
+	if nil == t {
+		return ErrListNil
+	}
+	// The arguments are already checked by the calling `TADlist`,
+	// so we can skip that here.
+	if rErr = aCtx.Err(); nil != rErr {
+		return
+	}
+
+	loader := &tSimpleLoader{}
+	t.root.Lock()
+	if rErr = loader.Load(aCtx, aFilename, t.root.node); nil == rErr {
+		t.lastLoadTime = time.Now()
+		t.filename = aFilename
+		t.url = ""
+	}
+	t.root.Unlock()
+
+	return
+} // loadLocal()
 
 const (
 	downExt  = ".down"
 	localExt = ".local"
 )
 
-// `loadFile()` reads hostname patterns (FQDN or wildcards) from `aFilename`
+// `loadRemote()` reads hostname patterns (FQDN or wildcards) from `aFilename`
 // and inserts them into the trie.
 //
 // The method ignores empty lines and comment lines (starting with `#` or
@@ -280,8 +324,8 @@ const (
 //
 // Returns:
 //   - `error`: `nil` if the patterns were read successfully, the error otherwise.
-func (t *tTrie) loadFile(aCtx context.Context, aURL, aFilename string) (rErr error) {
-	if (nil == t) || (nil == t.root) {
+func (t *tTrie) loadRemote(aCtx context.Context, aURL, aFilename string) (rErr error) {
+	if nil == t {
 		return ErrListNil
 	}
 	// The arguments are already checked by the calling `TADlist`,
@@ -324,7 +368,7 @@ func (t *tTrie) loadFile(aCtx context.Context, aURL, aFilename string) (rErr err
 
 	// Load the file into a new trie
 	newRoot := newTrie()
-	if rErr = loader.Load(aCtx, aFilename, newRoot.root); nil != rErr {
+	if rErr = loader.Load(aCtx, aFilename, newRoot.root.node); nil != rErr {
 		return
 	}
 	if rErr = aCtx.Err(); nil != rErr {
@@ -343,7 +387,7 @@ func (t *tTrie) loadFile(aCtx context.Context, aURL, aFilename string) (rErr err
 	}
 	defer localFile.Close()
 
-	if rErr = saver.Save(aCtx, localFile, newRoot.root); nil != rErr {
+	if rErr = saver.Save(aCtx, localFile, newRoot.root.node); nil != rErr {
 		return
 	}
 	if rErr = aCtx.Err(); nil != rErr {
@@ -353,12 +397,12 @@ func (t *tTrie) loadFile(aCtx context.Context, aURL, aFilename string) (rErr err
 	newRoot.lastLoadTime = time.Now()
 	newRoot.filename = aFilename
 	newRoot.url = aURL
-	newRoot.root.Lock()
-	t.root = newRoot.root
-	newRoot.root.Unlock()
+	t.root.Lock()
+	t.root.node = newRoot.root.node
+	t.root.Unlock()
 
 	return
-} // loadFile()
+} // loadRemote()
 
 // `Match()` checks if the given hostname matches any pattern in the list.
 //
@@ -374,7 +418,7 @@ func (t *tTrie) loadFile(aCtx context.Context, aURL, aFilename string) (rErr err
 // Returns:
 //   - `rOK`: `true` if the hostname matches any pattern, `false` otherwise.
 func (t *tTrie) Match(aCtx context.Context, aHostPattern string) (rOK bool) {
-	if nil == t || nil == t.root {
+	if (nil == t) || (nil == t.root.node) {
 		return
 	}
 
@@ -389,7 +433,7 @@ func (t *tTrie) Match(aCtx context.Context, aHostPattern string) (rOK bool) {
 	}
 
 	t.root.RLock()
-	rOK = t.root.match(aCtx, parts)
+	rOK = t.root.node.match(aCtx, parts)
 	t.root.RUnlock()
 
 	if rOK {
@@ -406,7 +450,7 @@ func (t *tTrie) Match(aCtx context.Context, aHostPattern string) (rOK bool) {
 // Returns:
 //   - `*TMetrics`: Current metrics data.
 func (t *tTrie) Metrics() *TMetrics {
-	if (nil == t) || (nil == t.root) {
+	if (nil == t) || (nil == t.root.node) {
 		return nil
 	}
 
@@ -421,7 +465,7 @@ func (t *tTrie) Metrics() *TMetrics {
 	runtime.ReadMemStats(&m)
 
 	t.root.RLock()
-	nodes, patterns := t.root.count(context.TODO())
+	nodes, patterns := t.root.node.count(context.TODO())
 	t.root.RUnlock()
 	t.numNodes.Store(uint32(nodes))       //#nosec G115
 	t.numPatterns.Store(uint32(patterns)) //#nosec G115
@@ -456,7 +500,7 @@ func (t *tTrie) Metrics() *TMetrics {
 // Returns:
 //   - `error`: `nil` if the patterns were written successfully, the error otherwise.
 func (t *tTrie) storeFile(aCtx context.Context, aFilename string) error {
-	if (nil == t) || (nil == t.root) {
+	if (nil == t) || (nil == t.root.node) {
 		return ErrListNil
 	}
 
@@ -482,7 +526,7 @@ func (t *tTrie) storeFile(aCtx context.Context, aFilename string) error {
 	defer cancel() // Ensure cancel is called
 
 	t.root.RLock()
-	err = t.root.store(ctx, file)
+	err = t.root.node.store(ctx, file)
 	t.root.RUnlock()
 
 	if nil != err {
@@ -500,12 +544,12 @@ func (t *tTrie) storeFile(aCtx context.Context, aFilename string) error {
 // Returns:
 //   - `string`: The string representation of the trie.
 func (t *tTrie) String() (rStr string) {
-	if (nil == t) || (nil == t.root) {
+	if (nil == t) || (nil == t.root.node) {
 		return ErrNodeNil.Error()
 	}
 
 	t.root.RLock()
-	rStr = t.root.string("Trie")
+	rStr = t.root.node.string("Trie")
 	t.root.RUnlock()
 
 	return
@@ -528,7 +572,7 @@ func (t *tTrie) String() (rStr string) {
 // Returns:
 //   - `rOK`: `true` if the pattern was updated, `false` otherwise.
 func (t *tTrie) Update(aCtx context.Context, aOldPattern, aNewPattern string) (rOK bool) {
-	if nil == t || nil == t.root {
+	if (nil == t) || (nil == t.root.node) {
 		return
 	}
 
@@ -552,7 +596,7 @@ func (t *tTrie) Update(aCtx context.Context, aOldPattern, aNewPattern string) (r
 	}
 
 	t.root.Lock()
-	rOK = t.root.update(aCtx, oldParts, newParts)
+	rOK = t.root.node.update(aCtx, oldParts, newParts)
 	t.root.Unlock()
 
 	return
