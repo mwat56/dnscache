@@ -412,7 +412,8 @@ func (adl *TADlist) LoadDeny(aCtx context.Context, aURL string) error {
 	}
 
 	//
-	//TODO: Loop through all arguments and load them all into a single list.
+	//TODO: Loop through all arguments and merge them all into
+	// a single deny list.
 	//
 
 	if aURL = strings.TrimSpace(aURL); 0 == len(aURL) {

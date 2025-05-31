@@ -627,6 +627,94 @@ func Test_tTrie_Match(t *testing.T) {
 	}
 } // Test_tTrie_Match()
 
+func Test_tTrie_Merge(t *testing.T) {
+	tests := []struct {
+		name     string
+		trie     *tTrie
+		other    *tTrie
+		wantBool bool
+	}{
+		/* */
+		{
+			name:     "01 - nil trie",
+			trie:     nil,
+			other:    newTrie(),
+			wantBool: false,
+		},
+		{
+			name:     "02 - nil other",
+			trie:     newTrie(),
+			other:    nil,
+			wantBool: false,
+		},
+		{
+			name:     "03 - nil trie and other",
+			trie:     nil,
+			other:    nil,
+			wantBool: false,
+		},
+		{
+			name:     "04 - empty tries",
+			trie:     newTrie(),
+			other:    newTrie(),
+			wantBool: true,
+		},
+		{
+			name: "05 - merge into empty trie",
+			trie: newTrie(),
+			other: func() *tTrie {
+				t := newTrie()
+				t.root.node.add(context.TODO(), tPartsList{"tld"})
+				return t
+			}(),
+			wantBool: true,
+		},
+		{
+			name: "06 - merge into non-empty trie",
+			trie: func() *tTrie {
+				t := newTrie()
+				t.root.node.add(context.TODO(), tPartsList{"tld"})
+				return t
+			}(),
+			other: func() *tTrie {
+				t := newTrie()
+				t.root.node.add(context.TODO(), tPartsList{"tld2"})
+				return t
+			}(),
+			wantBool: true,
+		},
+		{
+			name: "07 - merge multi-level nodes",
+			trie: func() *tTrie {
+				t := newTrie()
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "*"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "host"})
+				return t
+			}(),
+			other: func() *tTrie {
+				t := newTrie()
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "host"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "sub", "host"})
+				return t
+			}(),
+			wantBool: true,
+		},
+		/* */
+		// More tests are done on the node's method.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			gotBool := tc.trie.Merge(context.TODO(), tc.other)
+
+			if gotBool != tc.wantBool {
+				t.Errorf("tTrie.Merge() gotBool = '%v', want '%v'",
+					gotBool, tc.wantBool)
+			}
+		})
+	}
+} // Test_tTrie_Merge()
+
 func Test_tTrie_Metrics(t *testing.T) {
 	func() {
 		// This test would succeed only if it was run as part of only

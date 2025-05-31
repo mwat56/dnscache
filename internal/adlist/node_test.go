@@ -453,130 +453,6 @@ func Test_tNode_allPatterns(t *testing.T) {
 	}
 } // Test_tNode_allPatterns()
 
-/*
-func Test_tNode_clone(t *testing.T) {
-	km1a := tChildren{"tld": &tNode{terminator: endMask}}
-	km1b := tChildren{"domain": &tNode{terminator: endMask}}
-
-	tests := []struct {
-		name string
-		node *tNode
-		want *tNode
-	}{
-		{
-			name: "01 - clone nil",
-			node: nil,
-			want: nil,
-		},
-		{
-			name: "02 - clone",
-			node: &tNode{
-				tChildren:  km1a,
-				terminator: endMask | wildMask,
-			},
-			want: &tNode{
-				tChildren:  km1a,
-				terminator: endMask | wildMask,
-			},
-		},
-		{
-			name: "03 - clone with children",
-			node: &tNode{
-				tChildren:  km1a,
-				terminator: endMask | wildMask,
-			},
-			want: &tNode{
-				tChildren:  km1a,
-				terminator: endMask | wildMask,
-			},
-		},
-		{
-			name: "04 - clone with multiple children",
-			node: &tNode{
-				tChildren:  tChildren{"tld": &tNode{terminator: endMask}, "domain": &tNode{terminator: endMask}},
-				terminator: endMask | wildMask,
-			},
-			want: &tNode{
-				tChildren:  tChildren{"tld": &tNode{terminator: endMask}, "domain": &tNode{terminator: endMask}},
-				terminator: endMask | wildMask,
-			},
-		},
-		{
-			name: "05 - clone with multiple levels",
-			node: &tNode{
-				tChildren: tChildren{"tld": &tNode{
-					tChildren: km1b,
-				}},
-				terminator: endMask | wildMask,
-			},
-			want: &tNode{
-				tChildren: tChildren{"tld": &tNode{
-					tChildren: km1b,
-				}},
-				terminator: endMask | wildMask,
-			},
-		},
-		{
-			name: "06 - clone with wildcard",
-			node: &tNode{
-				tChildren:  tChildren{"*": &tNode{terminator: wildMask}},
-				terminator: endMask | wildMask,
-			},
-			want: &tNode{
-				tChildren:  tChildren{"*": &tNode{terminator: wildMask}},
-				terminator: endMask | wildMask,
-			},
-		},
-		{
-			name: "07 - clone with wildcard and children",
-			node: &tNode{
-				tChildren:  tChildren{"*": &tNode{terminator: wildMask}, "tld": &tNode{terminator: endMask}},
-				terminator: endMask | wildMask,
-			},
-			want: &tNode{
-				tChildren:  tChildren{"*": &tNode{terminator: wildMask}, "tld": &tNode{terminator: endMask}},
-				terminator: endMask | wildMask,
-			},
-		},
-		{
-			name: "08 - clone with wildcard and multiple children",
-			node: &tNode{
-				tChildren:  tChildren{"*": &tNode{terminator: wildMask}, "tld": &tNode{terminator: endMask}, "domain": &tNode{terminator: endMask}},
-				terminator: endMask | wildMask,
-			},
-			want: &tNode{
-				tChildren:  tChildren{"*": &tNode{terminator: wildMask}, "tld": &tNode{terminator: endMask}, "domain": &tNode{terminator: endMask}},
-				terminator: endMask | wildMask,
-			},
-		},
-		// TODO: Add test cases.
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := tc.node.clone()
-
-			if nil == got {
-				if nil != tc.want {
-					t.Error("tNode.clone() = nil, want non-nil")
-				}
-				return
-			}
-			if nil == tc.want {
-				t.Errorf("tNode.clone() =\n%q\nwant\nnil",
-					got.String())
-				return
-			}
-			if !got.Equal(tc.want) {
-				t.Errorf("tNode.clone() =\n%q\nwant\n%q",
-					got.String(), tc.want.String())
-				return
-			}
-		})
-	}
-} // Test_tNode_clone()
-*/
-
 func Test_tNode_count(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -874,6 +750,7 @@ func Test_tNode_forEach(t *testing.T) {
 		/* */
 		// TODO: Add test cases.
 	}
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.node.forEach(context.TODO(), tc.aFunc)
@@ -1010,6 +887,121 @@ func Test_tNode_match(t *testing.T) {
 		})
 	}
 } // Test_tNode_match()
+
+func Test_tNode_merge(t *testing.T) {
+	tests := []struct {
+		name string
+		node *tNode
+		src  *tNode
+		want *tNode
+	}{
+		/* */
+		{
+			name: "01 - merge nil node",
+			node: nil,
+			src:  newNode(),
+			want: newNode(),
+		},
+		{
+			name: "02 - merge empty node",
+			node: newNode(),
+			src:  nil,
+			want: newNode(),
+		},
+		{
+			name: "03 - merge empty node",
+			node: newNode(),
+			src:  newNode(),
+			want: newNode(),
+		},
+		{
+			name: "04 - merge non-empty node",
+			node: func() *tNode {
+				n := newNode()
+				n.add(context.TODO(), tPartsList{"tld", "domain"})
+				return n
+			}(),
+			src: func() *tNode {
+				n := newNode()
+				n.add(context.TODO(), tPartsList{"tld", "domain", "host"})
+				return n
+			}(),
+			want: func() *tNode {
+				n := newNode()
+				n.add(context.TODO(), tPartsList{"tld", "domain"})
+				n.add(context.TODO(), tPartsList{"tld", "domain", "host"})
+				return n
+			}(),
+		},
+		{
+			name: "05 - merge wildcard node",
+			node: func() *tNode {
+				n := newNode()
+				n.add(context.TODO(), tPartsList{"tld", "domain", "host"})
+				return n
+			}(),
+			src: func() *tNode {
+				n := newNode()
+				n.add(context.TODO(), tPartsList{"tld", "domain", "*"})
+				return n
+			}(),
+			want: func() *tNode {
+				n := newNode()
+				n.add(context.TODO(), tPartsList{"tld", "domain", "*"})
+				n.add(context.TODO(), tPartsList{"tld", "domain", "host"})
+				return n
+			}(),
+		},
+		{
+			name: "06 - merge multi-level nodes",
+			node: func() *tNode {
+				n := newNode()
+				n.add(context.TODO(), tPartsList{"tld", "domain", "*"})
+				n.add(context.TODO(), tPartsList{"tld", "domain", "www"})
+				n.add(context.TODO(), tPartsList{"tld2",   "*"})
+				return n
+			}(),
+			src: func() *tNode {
+				n := newNode()
+				n.add(context.TODO(), tPartsList{"tld", "domain", "host"})
+				n.add(context.TODO(), tPartsList{"tld2", "domain", "www"})
+				return n
+			}(),
+			want: func() *tNode {
+				n := newNode()
+				n.add(context.TODO(), tPartsList{"tld", "domain", "*"})
+				n.add(context.TODO(), tPartsList{"tld", "domain", "host"})
+				n.add(context.TODO(), tPartsList{"tld", "domain", "www"})
+				n.add(context.TODO(), tPartsList{"tld2",  "*"})
+				n.add(context.TODO(), tPartsList{"tld2", "domain", "www"})
+				return n
+			}(),
+		},
+		/* */
+		// TODO: Add test cases.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.node.merge(context.TODO(), tc.src)
+			if nil == got {
+				if nil != tc.want {
+					t.Error("tNode.merge() = nil, want non-nil")
+				}
+				return
+			}
+			if nil == tc.want {
+				t.Errorf("tNode.merge() = %v, want 'nil'",
+					got)
+				return
+			}
+			if !got.Equal(tc.want) {
+				t.Errorf("tNode.merge() =\n%q\nwant\n%q",
+					got.String(), tc.want.String())
+			}
+		})
+	}
+} // Test_tNode_merge()
 
 func Test_tNode_store(t *testing.T) {
 	tests := []struct {

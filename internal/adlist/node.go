@@ -99,11 +99,11 @@ func (n *tNode) add(aCtx context.Context, aPartsList tPartsList) (rOK bool) {
 
 	node := n
 	for depth, label = range aPartsList {
+		// Check for timeout or cancellation
+		if nil != aCtx.Err() {
+			return
+		}
 		if _, ok = node.tChildren[label]; !ok {
-			// Check for timeout or cancellation
-			if nil != aCtx.Err() {
-				return
-			}
 			node.tChildren[label] = newNode()
 			added++
 		}
@@ -149,8 +149,8 @@ func (n *tNode) allPatterns(aCtx context.Context) (rList tPartsList) {
 		}
 	)
 	var (
-		cLen int
-		kids tPartsList
+		cLen     int
+		kidNames tPartsList
 	)
 	stack := []tStackEntry{
 		// Push the current node to the stack
@@ -187,12 +187,12 @@ func (n *tNode) allPatterns(aCtx context.Context) (rList tPartsList) {
 		}
 
 		// Collect and sort children keys for deterministic order
-		kids = make(tPartsList, 0, cLen)
+		kidNames = make(tPartsList, 0, cLen)
 		for label := range current.node.tChildren {
-			kids = append(kids, label)
+			kidNames = append(kidNames, label)
 		}
-		if 1 < len(kids) {
-			sort.Strings(kids)
+		if 1 < len(kidNames) {
+			sort.Strings(kidNames)
 		}
 
 		// Check for timeout or cancellation
@@ -202,8 +202,8 @@ func (n *tNode) allPatterns(aCtx context.Context) (rList tPartsList) {
 
 		// Push children to stack in reverse-sorted order
 		// (to process them in forward order when popped)
-		for i := len(kids) - 1; 0 <= i; i-- {
-			label := kids[i]
+		for i := len(kidNames) - 1; 0 <= i; i-- {
+			label := kidNames[i]
 			child := current.node.tChildren[label]
 			newPath := make(tPartsList, len(current.path)+1)
 			copy(newPath, current.path)
@@ -217,30 +217,6 @@ func (n *tNode) allPatterns(aCtx context.Context) (rList tPartsList) {
 
 	return
 } // allPatterns()
-
-/*
-// `clone()` returns a deep copy of the node.
-//
-// Returns:
-//   - `*tNode`: A deep copy of the node.
-func (n *tNode) clone() *tNode {
-	if nil == n {
-		return nil
-	}
-
-	clone := &tNode{
-		tChildren:  make(tChildren),
-		terminator: n.terminator,
-	}
-
-	// Clone the children nodes
-	for label, child := range n.tChildren {
-		clone.tChildren[label] = child.clone()
-	}
-
-	return clone
-} // clone()
-*/
 
 // `count()` returns the number of nodes and patterns in the node's tree.
 //
@@ -261,8 +237,8 @@ func (n *tNode) count(aCtx context.Context) (rNodes, rPatterns int) {
 		}
 	)
 	var (
-		cLen int
-		kids tPartsList
+		cLen     int
+		kidNames tPartsList
 	)
 	stack := []tStackEntry{
 		// Push the current node to the stack
@@ -292,18 +268,18 @@ func (n *tNode) count(aCtx context.Context) (rNodes, rPatterns int) {
 		}
 
 		// Collect and sort children keys for deterministic order
-		kids = make(tPartsList, 0, cLen)
+		kidNames = make(tPartsList, 0, cLen)
 		for label := range current.node.tChildren {
-			kids = append(kids, label)
+			kidNames = append(kidNames, label)
 		}
-		if 1 < len(kids) {
-			sort.Strings(kids)
+		if 1 < len(kidNames) {
+			sort.Strings(kidNames)
 		}
 
 		// Push children to stack in reverse-sorted order
 		// (to process them in forward order when popped)
-		for idx := len(kids) - 1; 0 <= idx; idx-- {
-			label := kids[idx]
+		for idx := len(kidNames) - 1; 0 <= idx; idx-- {
+			label := kidNames[idx]
 			newPath := make(tPartsList, len(current.path)+1)
 			copy(newPath, current.path)
 			newPath[len(current.path)] = label
@@ -470,18 +446,18 @@ func (n *tNode) forEach(aCtx context.Context, aFunc func(aNode *tNode)) {
 
 		aFunc(entry.node)
 
-		// Collect and sort children kids for deterministic order
+		// Collect and sort children kidNames for deterministic order
 		cLen := len(entry.node.tChildren)
 		if 0 == cLen {
 			continue
 		}
 
-		kids := make(tPartsList, 0, cLen)
-		for k := range entry.node.tChildren {
-			kids = append(kids, k)
+		kidNames := make(tPartsList, 0, cLen)
+		for label := range entry.node.tChildren {
+			kidNames = append(kidNames, label)
 		}
-		if 1 < len(kids) {
-			sort.Strings(kids)
+		if 1 < len(kidNames) {
+			sort.Strings(kidNames)
 		}
 
 		// Check for timeout or cancellation
@@ -491,63 +467,13 @@ func (n *tNode) forEach(aCtx context.Context, aFunc func(aNode *tNode)) {
 
 		// Push children to stack in reverse-sorted order
 		// (to process them in forward order when popped)
-		for idx := len(kids) - 1; 0 <= idx; idx-- {
+		for idx := len(kidNames) - 1; 0 <= idx; idx-- {
 			stack = append(stack, tStackEntry{
-				node: entry.node.tChildren[kids[idx]],
+				node: entry.node.tChildren[kidNames[idx]],
 			})
 		}
 	}
 } // forEach()
-
-/*
-// `load()` reads patterns from the reader and adds them to the node's tree.
-//
-// Parameters:
-//   - `aCtx`: The timeout context to use for the operation.
-//   - `aReader`: The reader to read the patterns from.
-//
-// Returns:
-//   - `error`: `nil` if the patterns were read successfully, the error otherwise.
-func (n *tNode) load(aCtx context.Context, aReader io.Reader) error {
-	if (nil == n) || (nil == aReader) {
-		return ErrNodeNil
-	}
-
-	scanner := bufio.NewScanner(aReader)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		// Ignore empty lines
-		if 0 == len(line) {
-			continue
-		}
-		// Ignore comment lines
-		if "#" == string(line[0]) || ";" == string(line[0]) {
-			continue
-		}
-
-		parts := pattern2parts(line)
-		if 0 == len(parts) {
-			continue
-		}
-
-		// Add the pattern to the node
-		if ok := n.add(aCtx, parts); !ok {
-			if err := aCtx.Err(); nil != err {
-				return fmt.Errorf("failed to add pattern %q: %w", line, err)
-			}
-
-			return fmt.Errorf("failed to add pattern %q", line)
-		}
-
-		// Check for timeout or cancellation
-		if err := aCtx.Err(); nil != err {
-			return err
-		}
-	}
-
-	return scanner.Err()
-} // load()
-*/
 
 // `match()` checks whether the node's tree contains the given pattern.
 //
@@ -575,6 +501,7 @@ func (n *tNode) match(aCtx context.Context, aPartsList tPartsList) (rOK bool) {
 	)
 
 	for depth, label = range aPartsList {
+		// Check for timeout or cancellation
 		if nil != aCtx.Err() {
 			return
 		}
@@ -589,7 +516,7 @@ func (n *tNode) match(aCtx context.Context, aPartsList tPartsList) (rOK bool) {
 		}
 
 		n = child
-		// First check for a wildcard match at the current level,
+		// First check for a wildcard match at the current level
 		if child, ok = n.tChildren["*"]; ok {
 			rOK = (((child.terminator & wildMask) == wildMask) ||
 				((child.terminator & endMask) == endMask))
@@ -608,6 +535,77 @@ func (n *tNode) match(aCtx context.Context, aPartsList tPartsList) (rOK bool) {
 
 	return
 } // match()
+
+// `merge()` merges the subtree of `aSrc` into the current node.
+//
+// Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
+//   - `aSrc`: The source node to merge from.
+//
+// Returns:
+//   - `*tNode`: The merged node.
+func (n *tNode) merge(aCtx context.Context, aSrc *tNode) *tNode {
+	if nil == n {
+		return aSrc
+	}
+	if nil == aSrc {
+		return n
+	}
+	type (
+		tStackEntry struct {
+			srcNode  *tNode
+			destNode *tNode
+		}
+	)
+	var label string
+
+	stack := []tStackEntry{{aSrc, n}}
+
+	for 0 < len(stack) {
+		// Check for timeout or cancellation
+		if nil != aCtx.Err() {
+			break
+		}
+		entry := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		// Merge terminal flags using OR
+		if 0 != entry.srcNode.terminator {
+			entry.destNode.terminator |= entry.srcNode.terminator
+		}
+
+		// Collect and sort children keys for deterministic order
+		cLen := len(entry.srcNode.tChildren)
+		if 0 == cLen {
+			continue
+		}
+
+		kidNames := make(tPartsList, 0, cLen)
+		for label = range entry.srcNode.tChildren {
+			kidNames = append(kidNames, label)
+		}
+		if 1 < len(kidNames) {
+			sort.Strings(kidNames)
+		}
+
+		for _, label = range kidNames {
+			srcChild := entry.srcNode.tChildren[label]
+			destChild, exists := entry.destNode.tChildren[label]
+
+			if !exists {
+				// Create new destination child
+				destChild = newNode()
+				destChild.terminator = srcChild.terminator
+				entry.destNode.tChildren[label] = destChild
+			}
+
+			// Push to stack for deeper merge
+			stack = append(stack, tStackEntry{srcChild, destChild})
+		}
+	}
+
+	return n
+} // merge()
 
 // `store()` writes all patterns currently in the node to the writer,
 // one hostname pattern per line.
@@ -675,13 +673,13 @@ func (n *tNode) store(aCtx context.Context, aWriter io.Writer) error {
 			continue
 		}
 
-		// Collect and sort children kids
-		kids := make(tPartsList, 0, cLen)
+		// Collect and sort children kidNames
+		kidNames := make(tPartsList, 0, cLen)
 		for label := range entry.node.tChildren {
-			kids = append(kids, label)
+			kidNames = append(kidNames, label)
 		}
-		if 1 < len(kids) {
-			sort.Strings(kids)
+		if 1 < len(kidNames) {
+			sort.Strings(kidNames)
 		}
 
 		// Check for timeout or cancellation
@@ -691,8 +689,8 @@ func (n *tNode) store(aCtx context.Context, aWriter io.Writer) error {
 
 		// Push children in reverse-sorted order for
 		// correct processing sequence
-		for idx := len(kids) - 1; 0 <= idx; idx-- {
-			label := kids[idx]
+		for idx := len(kidNames) - 1; 0 <= idx; idx-- {
+			label := kidNames[idx]
 			newPath := make(tPartsList, len(entry.path)+1)
 			copy(newPath, entry.path)
 			newPath[len(entry.path)] = label
@@ -721,7 +719,7 @@ func (n *tNode) string(aLabel string) string {
 
 	type (
 		tStackEntry struct {
-			kids     tPartsList // sorted child keys
+			kidNames tPartsList // sorted child keys
 			name     string     // label of the node
 			node     *tNode     // respective node to process
 			depth    int        // depth in the tree
@@ -731,7 +729,7 @@ func (n *tNode) string(aLabel string) string {
 	// Locking is done by the calling `tTrie`
 	stack := []tStackEntry{
 		{
-			kids:     nil,
+			kidNames: nil,
 			name:     aLabel,
 			node:     n,
 			depth:    0,
@@ -750,7 +748,7 @@ func (n *tNode) string(aLabel string) string {
 
 		// If this is the first time visiting this node,
 		// print its details
-		if nil == entry.kids {
+		if nil == entry.kidNames {
 			line := fmt.Sprintf("%q:\n%sisEnd: %v\n%sisWild: %v\n",
 				entry.name,
 				indent, ((entry.node.terminator & endMask) == endMask),
@@ -758,27 +756,27 @@ func (n *tNode) string(aLabel string) string {
 			builder.WriteString(line)
 
 			// Prepare sorted child keys
-			entry.kids = make(tPartsList, 0, len(entry.node.tChildren))
+			entry.kidNames = make(tPartsList, 0, len(entry.node.tChildren))
 			for label := range entry.node.tChildren {
-				entry.kids = append(entry.kids, label)
+				entry.kidNames = append(entry.kidNames, label)
 			}
-			if 1 < len(entry.kids) {
-				sort.Strings(entry.kids)
+			if 1 < len(entry.kidNames) {
+				sort.Strings(entry.kidNames)
 			}
 		}
 
 		// If there are unprocessed children, process the next one
-		if entry.childIdx < len(entry.kids) {
+		if entry.childIdx < len(entry.kidNames) {
 			// Indent for the child node
 			builder.WriteString(indent)
 
-			label := entry.kids[entry.childIdx]
+			label := entry.kidNames[entry.childIdx]
 			child := entry.node.tChildren[label]
 			entry.childIdx++
 
 			// Push the child node to the stack
 			stack = append(stack, tStackEntry{
-				kids:     nil,
+				kidNames: nil,
 				name:     label,
 				node:     child,
 				depth:    entry.depth + 2,

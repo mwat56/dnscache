@@ -445,6 +445,34 @@ func (t *tTrie) Match(aCtx context.Context, aHostPattern string) (rOK bool) {
 	return
 } // Match()
 
+// `Merge()` merges the other trie into the current one.
+//
+// Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
+//   - `aOther`: The other trie to merge into the current one.
+//
+// Returns:
+//   - `rOK`: `true` if the merge was successful, `false` otherwise.
+func (t *tTrie) Merge(aCtx context.Context, aTrie *tTrie) (rOK bool) {
+	if (nil == t) || (nil == t.root.node) ||
+		(nil == aTrie) || (nil == aTrie.root.node) {
+		return
+	}
+
+	// Check for timeout or cancellation
+	if nil != aCtx.Err() {
+		return
+	}
+
+	t.root.Lock()
+	aTrie.root.RLock()
+	rOK = (nil != t.root.node.merge(aCtx, aTrie.root.node))
+	aTrie.root.RUnlock()
+	t.root.Unlock()
+
+	return
+} // Merge()
+
 // `Metrics()` returns the current metrics data.
 //
 // Returns:
