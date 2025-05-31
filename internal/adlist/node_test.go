@@ -453,6 +453,7 @@ func Test_tNode_allPatterns(t *testing.T) {
 	}
 } // Test_tNode_allPatterns()
 
+/*
 func Test_tNode_clone(t *testing.T) {
 	km1a := tChildren{"tld": &tNode{terminator: endMask}}
 	km1b := tChildren{"domain": &tNode{terminator: endMask}}
@@ -462,7 +463,6 @@ func Test_tNode_clone(t *testing.T) {
 		node *tNode
 		want *tNode
 	}{
-		/* */
 		{
 			name: "01 - clone nil",
 			node: nil,
@@ -549,7 +549,6 @@ func Test_tNode_clone(t *testing.T) {
 				terminator: endMask | wildMask,
 			},
 		},
-		/* */
 		// TODO: Add test cases.
 	}
 
@@ -576,6 +575,7 @@ func Test_tNode_clone(t *testing.T) {
 		})
 	}
 } // Test_tNode_clone()
+*/
 
 func Test_tNode_count(t *testing.T) {
 	tests := []struct {

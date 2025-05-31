@@ -14,7 +14,6 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"sync"
 )
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
@@ -36,9 +35,8 @@ type (
 	// The node is a leaf node if `terminator` has the `endMask` bit set and
 	// it's a wildcard node if `terminator` has the `wildMask` bit set.
 	tNode struct {
-		sync.RWMutex       // barrier for concurrent access
-		tChildren          // children nodes
-		terminator   uint8 // flags for pattern end and wildcard
+		tChildren        // children nodes
+		terminator uint8 // flags for pattern end and wildcard
 	}
 )
 
@@ -220,6 +218,7 @@ func (n *tNode) allPatterns(aCtx context.Context) (rList tPartsList) {
 	return
 } // allPatterns()
 
+/*
 // `clone()` returns a deep copy of the node.
 //
 // Returns:
@@ -241,6 +240,7 @@ func (n *tNode) clone() *tNode {
 
 	return clone
 } // clone()
+*/
 
 // `count()` returns the number of nodes and patterns in the node's tree.
 //
@@ -413,9 +413,6 @@ func (n *tNode) Equal(aNode *tNode) (rOK bool) {
 		rOK = true
 		return
 	}
-	// The node's own lock is done by the calling `tTrie`
-	aNode.RLock()
-	defer aNode.RUnlock()
 
 	if n.terminator != aNode.terminator {
 		return
