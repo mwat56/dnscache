@@ -169,8 +169,7 @@ func (n *tNode) allPatterns(aCtx context.Context) (rList tPartsList) {
 		stack = stack[:len(stack)-1]
 
 		// Check if current node is a terminal pattern
-		if ((current.node.terminator & endMask) == endMask) ||
-			((current.node.terminator & wildMask) == wildMask) {
+		if 0 != current.node.terminator { // either end or wildcard bits
 			// Reverse the path to get the original FQDN
 			// in original order.
 			if pLen := len(current.path); 0 < pLen {
@@ -258,8 +257,7 @@ func (n *tNode) count(aCtx context.Context) (rNodes, rPatterns int) {
 		rNodes++
 
 		// Check if current node is a terminal pattern
-		if ((current.node.terminator & endMask) == endMask) ||
-			((current.node.terminator & wildMask) == wildMask) {
+		if 0 != current.node.terminator { // either end or wildcard bits
 			rPatterns++
 		}
 
@@ -509,8 +507,7 @@ func (n *tNode) match(aCtx context.Context, aPartsList tPartsList) (rOK bool) {
 		if !ok {
 			// No child with that name, check for wildcard
 			if child, ok = n.tChildren["*"]; ok {
-				rOK = (((child.terminator & wildMask) == wildMask) ||
-					((child.terminator & endMask) == endMask))
+				rOK = (0 != child.terminator) // either end or wildcard bits
 			}
 			break
 		}
@@ -518,8 +515,7 @@ func (n *tNode) match(aCtx context.Context, aPartsList tPartsList) (rOK bool) {
 		n = child
 		// First check for a wildcard match at the current level
 		if child, ok = n.tChildren["*"]; ok {
-			rOK = (((child.terminator & wildMask) == wildMask) ||
-				((child.terminator & endMask) == endMask))
+			rOK = (0 != child.terminator) // either end or wildcard bits
 			break
 		} else {
 			// Remember the last non-wildcard node
@@ -640,7 +636,12 @@ func (n *tNode) store(aCtx context.Context, aWriter io.Writer) error {
 		}
 	)
 
-	stack := []tStackEntry{{node: n, path: tPartsList{}}}
+	stack := []tStackEntry{
+		{
+			path: tPartsList{},
+			node: n,
+		},
+	}
 	for 0 < len(stack) {
 		// Pop from stack
 		entry := stack[len(stack)-1]
@@ -653,8 +654,7 @@ func (n *tNode) store(aCtx context.Context, aWriter io.Writer) error {
 		}
 
 		// Process current node
-		if ((entry.node.terminator & endMask) == endMask) ||
-			((entry.node.terminator & wildMask) == wildMask) {
+		if 0 != entry.node.terminator { // either end or wildcard bits
 			// Reverse path to original FQDN format
 			pLen := len(entry.path)
 			reversed := make(tPartsList, pLen)
