@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -78,7 +79,7 @@ var (
 // if they exist to initialise the list.
 //
 // Parameters:
-//   - `aDataDir`: The directory to use for local storage.
+//   - `aDataDir`: The directory to use for local storage of the allow/deny lists.
 //
 // Returns:
 //   - `*TADlist`: A new `TADlist` instance.
@@ -113,7 +114,8 @@ func New(aDataDir string) *TADlist {
 // ---------------------------------------------------------------------------
 // `TADlist` methods:
 
-// `add()` inserts a FQDN name/pattern (with optional wildcard) into the given list.
+// `addPattern()` inserts a FQDN name/pattern (with optional wildcard)
+// into the given list.
 //
 // This function is not exported, as it is only used internally by the
 // `AddAllow()` and `AddDeny()` methods.
@@ -125,22 +127,25 @@ func New(aDataDir string) *TADlist {
 //
 // Returns:
 //   - `bool`: `true` if the pattern was added, `false` otherwise.
-func add(aCtx context.Context, aPattern string, aList *tTrie) bool {
-	if nil == aList || (nil == aList.root.node) {
-		return false
-	}
+func addPattern(aCtx context.Context, aPattern string, aList *tTrie) bool {
 	if aPattern = strings.TrimSpace(aPattern); 0 == len(aPattern) {
-		return false
-	}
-	if nil != aCtx.Err() {
 		return false
 	}
 
 	ctx, cancel := context.WithTimeout(aCtx, time.Second<<2)
-	defer cancel() // Ensure cancel is called
+	if ok := aList.Add(ctx, aPattern); !ok {
+		cancel()
+		return false
+	}
 
-	return aList.Add(ctx, aPattern)
-} // add()
+	go func() {
+		defer cancel() // Ensure cancel is called after work
+		_ = aList.storeFile(ctx, aList.filename)
+	}()
+	runtime.Gosched() // yield to the new goroutine
+
+	return true
+} // addPattern()
 
 // `AddAllow()` inserts a FQDN name/pattern (with optional wildcard)
 // into the allow list.
@@ -152,34 +157,11 @@ func add(aCtx context.Context, aPattern string, aList *tTrie) bool {
 // Returns:
 //   - `bool`: `true` if the pattern was added, `false` otherwise.
 func (adl *TADlist) AddAllow(aCtx context.Context, aPattern string) bool {
-	if nil == adl {
+	if (nil == adl) || (nil == adl.allow) || (nil == adl.allow.root.node) {
 		return false
 	}
 
-	ctx, cancel := context.WithTimeout(aCtx, time.Second<<2)
-	defer cancel() // Ensure cancel is called
-
-	if ok := add(aCtx, aPattern, adl.allow); !ok {
-		return false
-	}
-
-	// Save the modified allow list
-	filename, err := filepath.Abs(filepath.Join(adl.datadir, adAllowFile))
-	if nil != err {
-		return false
-	}
-
-	go func(aCtx context.Context) {
-		// Check for timeout or cancellation
-		if err := aCtx.Err(); nil != err {
-			return
-		}
-
-		_ = adl.allow.storeFile(aCtx, filename)
-	}(ctx)
-	time.Sleep(time.Millisecond << 9) // yield to the new goroutine
-
-	return true
+	return addPattern(aCtx, aPattern, adl.allow)
 } // AddAllow()
 
 // `AddDeny()` inserts a FQDN name/pattern (with optional wildcard) into
@@ -192,11 +174,11 @@ func (adl *TADlist) AddAllow(aCtx context.Context, aPattern string) bool {
 // Returns:
 //   - `bool`: `true` if the pattern was added, `false` otherwise.
 func (adl *TADlist) AddDeny(aCtx context.Context, aPattern string) bool {
-	if nil == adl {
+	if (nil == adl) || (nil == adl.deny) || (nil == adl.deny.root.node) {
 		return false
 	}
 
-	return add(aCtx, aPattern, adl.deny)
+	return addPattern(aCtx, aPattern, adl.deny)
 } // AddDeny()
 
 // `deletePattern()` removes a FQDN name/pattern (with optional wildcard)
@@ -206,12 +188,13 @@ func (adl *TADlist) AddDeny(aCtx context.Context, aPattern string) bool {
 // `DeleteAllow()` and `DeleteDeny()` methods.
 //
 // Parameters:
+//   - `aCtx`: The context to use for the operation.
 //   - `aPattern`: The FQDN name/pattern to remove.
 //   - `aList`: The list to remove the pattern from.
 //
 // Returns:
 //   - `bool`: `true` if the pattern was found and deleted, `false` otherwise.
-func deletePattern(aPattern string, aList *tTrie) bool {
+func deletePattern(aCtx context.Context, aPattern string, aList *tTrie) bool {
 	if (nil == aList) || (nil == aList.root.node) {
 		return false
 	}
@@ -221,39 +204,53 @@ func deletePattern(aPattern string, aList *tTrie) bool {
 		return false
 	}
 
-	return aList.Delete(context.TODO(), aPattern)
+	ctx, cancel := context.WithTimeout(aCtx, time.Second<<2)
+	if ok := aList.Delete(ctx, aPattern); !ok {
+		cancel()
+		return false
+	}
+
+	go func() {
+		defer cancel() // Ensure cancel is called after work
+		_ = aList.storeFile(ctx, aList.filename)
+	}()
+	runtime.Gosched() // yield to the new goroutine
+
+	return true
 } // deletePattern()
 
 // `DeleteAllow()` removes a FQDN name/pattern (with optional wildcard)
 // from the allow list.
 //
 // Parameters:
+//   - `aCtx`: The context to use for the operation.
 //   - `aPattern`: The FQDN name/pattern to remove.
 //
 // Returns:
 //   - `bool`: `true` if the pattern was found and deleted, `false` otherwise.
-func (adl *TADlist) DeleteAllow(aPattern string) bool {
-	if nil == adl {
+func (adl *TADlist) DeleteAllow(aCtx context.Context, aPattern string) bool {
+	if (nil == adl) || (nil == adl.allow) || (nil == adl.allow.root.node) {
 		return false
 	}
 
-	return deletePattern(aPattern, adl.allow)
+	return deletePattern(aCtx, aPattern, adl.allow)
 } // DeleteAllow()
 
 // `DeleteDeny()` removes a FQDN name/pattern (with optional wildcard)
 // from the deny list.
 //
 // Parameters:
+//   - `aCtx`: The context to use for the operation.
 //   - `aPattern`: The FQDN name/pattern to remove.
 //
 // Returns:
 //   - `bool`: `true` if the pattern was found and deleted, `false` otherwise.
-func (adl *TADlist) DeleteDeny(aPattern string) bool {
-	if nil == adl {
+func (adl *TADlist) DeleteDeny(aCtx context.Context, aPattern string) bool {
+	if (nil == adl) || (nil == adl.deny) || (nil == adl.deny.root.node) {
 		return false
 	}
 
-	return deletePattern(aPattern, adl.deny)
+	return deletePattern(aCtx, aPattern, adl.deny)
 } // DeleteDeny()
 
 // `Equal()` checks whether the two lists are equal.
@@ -529,38 +526,26 @@ func (adl *TADlist) Shutdown() error {
 	return nil
 } // Shutdown()
 
-// `store()` writes all patterns currently in the list to the file.
+// `storeList()` writes all patterns currently in the list to the file.
 //
 // This function is not exported, as it is only used internally by the
 // `StoreAllow()` and `StoreDeny()` methods.
 //
 // Parameters:
 //   - `aCtx`: The context to use for the operation.
-//   - `aDir`: The directory to store the file in.
-//   - `aFilename`: The filename to store the file as.
-//   - `aList`: The list to store.
+//   - `aList`: The list to storeList.
 //
 // Returns:
 //   - `error`: `nil` if the patterns were written successfully, the error otherwise.
-func store(aCtx context.Context, aDir, aFilename string, aList *tTrie) (rErr error) {
-	aFilename = filepath.Join(aDir, aFilename)
-	if aFilename, rErr = filepath.Abs(aFilename); nil != rErr {
-		return
-	}
-	if rErr = aCtx.Err(); nil != rErr {
-		return
-	}
-	if 0 == len(aList.root.node.tChildren) {
-		rErr = ErrListNil
-		return
+func storeList(aCtx context.Context, aList *tTrie) error {
+	if (nil == aList) || (0 == len(aList.root.node.tChildren)) {
+		return ErrListNil
 	}
 	ctx, cancel := context.WithTimeout(aCtx, time.Second<<2)
 	defer cancel() // Ensure cancel is called
 
-	rErr = aList.storeFile(ctx, aFilename)
-
-	return
-} // store()
+	return aList.storeFile(ctx, aList.filename)
+} // storeList()
 
 // `StoreAllow()` writes all patterns currently in the allow list to the file.
 //
@@ -573,11 +558,11 @@ func store(aCtx context.Context, aDir, aFilename string, aList *tTrie) (rErr err
 //   - `error`: `nil` if the patterns were written successfully, the error otherwise.
 //     see [StoreDeny], [LoadAllow]
 func (adl *TADlist) StoreAllow(aCtx context.Context) error {
-	if nil == adl {
+	if (nil == adl) || (nil == adl.allow) || (nil == adl.allow.root.node) {
 		return ErrListNil
 	}
 
-	return store(aCtx, adl.datadir, adAllowFile, adl.allow)
+	return storeList(aCtx, adl.allow)
 } // StoreAllow()
 
 // `StoreDeny()` writes all patterns currently in the deny list to the file.
@@ -591,11 +576,11 @@ func (adl *TADlist) StoreAllow(aCtx context.Context) error {
 //   - `error`: `nil` if the patterns were written successfully, the error otherwise.
 //     see [StoreAllow], [LoadDeny]
 func (adl *TADlist) StoreDeny(aCtx context.Context) error {
-	if nil == adl {
+	if (nil == adl) || (nil == adl.deny) || (nil == adl.deny.root.node) {
 		return ErrListNil
 	}
 
-	return store(aCtx, adl.datadir, adDenyFile, adl.deny)
+	return storeList(aCtx, adl.deny)
 } // StoreDeny()
 
 // `String()` returns a string representation of the list.
@@ -616,7 +601,7 @@ func (adl *TADlist) String() string {
 	return builder.String()
 } // String()
 
-// `update()` replaces an old pattern with a new one in the given list.
+// `updatePattern()` replaces an old pattern with a new one in the given list.
 //
 // This function is not exported, as it is only used internally by the
 // `UpdateAllow()` and `UpdateDeny()` methods.
@@ -629,7 +614,7 @@ func (adl *TADlist) String() string {
 //
 // Returns:
 //   - `bool`: `true` if the pattern was updated, `false` otherwise.
-func update(aCtx context.Context, aOldPattern, aNewPattern string, aList *tTrie) bool {
+func updatePattern(aCtx context.Context, aOldPattern, aNewPattern string, aList *tTrie) bool {
 	if nil == aList {
 		return false
 	}
@@ -644,10 +629,19 @@ func update(aCtx context.Context, aOldPattern, aNewPattern string, aList *tTrie)
 	}
 
 	ctx, cancel := context.WithTimeout(aCtx, time.Second<<2)
-	defer cancel() // Ensure cancel is called
+	if ok := aList.Update(ctx, aOldPattern, aNewPattern); !ok {
+		cancel()
+		return false
+	}
 
-	return aList.Update(ctx, aOldPattern, aNewPattern)
-} // update()
+	go func() {
+		defer cancel() // Ensure cancel is called after work
+		_ = aList.storeFile(ctx, aList.filename)
+	}()
+	runtime.Gosched() // yield to the new goroutine
+
+	return true
+} // updatePattern()
 
 // `UpdateAllow()` replaces an old pattern with a new one in the allow list.
 //
@@ -659,11 +653,11 @@ func update(aCtx context.Context, aOldPattern, aNewPattern string, aList *tTrie)
 // Returns:
 //   - `bool`: `true` if the pattern was updated, `false` otherwise.
 func (adl *TADlist) UpdateAllow(aCtx context.Context, aOldPattern, aNewPattern string) bool {
-	if nil == adl {
+	if (nil == adl) || (nil == adl.allow) || (nil == adl.allow.root.node) {
 		return false
 	}
 
-	return update(aCtx, aOldPattern, aNewPattern, adl.allow)
+	return updatePattern(aCtx, aOldPattern, aNewPattern, adl.allow)
 } // UpdateAllow()
 
 // `UpdateDeny()` replaces an old pattern with a new one in the deny list.
@@ -676,11 +670,11 @@ func (adl *TADlist) UpdateAllow(aCtx context.Context, aOldPattern, aNewPattern s
 // Returns:
 //   - `bool`: `true` if the pattern was updated, `false` otherwise.
 func (adl *TADlist) UpdateDeny(aCtx context.Context, aOldPattern, aNewPattern string) bool {
-	if nil == adl {
+	if (nil == adl) || (nil == adl.deny) || (nil == adl.deny.root.node) {
 		return false
 	}
 
-	return update(aCtx, aOldPattern, aNewPattern, adl.deny)
+	return updatePattern(aCtx, aOldPattern, aNewPattern, adl.deny)
 } // UpdateDeny()
 
 /* _EoF_ */

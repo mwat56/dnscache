@@ -562,11 +562,8 @@ func (t *tTrie) storeFile(aCtx context.Context, aFilename string) error {
 	}
 	defer file.Close()
 
-	ctx, cancel := context.WithTimeout(aCtx, time.Second<<2)
-	defer cancel() // Ensure cancel is called
-
 	t.root.RLock()
-	err = t.root.node.store(ctx, file)
+	err = t.root.node.store(aCtx, file)
 	t.root.RUnlock()
 
 	if nil != err {

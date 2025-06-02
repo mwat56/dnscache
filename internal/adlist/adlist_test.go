@@ -199,7 +199,7 @@ func Test_TADlist_DeleteAllow(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			gotOK := tc.adl.DeleteAllow(tc.pattern)
+			gotOK := tc.adl.DeleteAllow(context.TODO(), tc.pattern)
 
 			if gotOK != tc.wantOK {
 				t.Errorf("TADlist.DeleteAllow() = '%v', want '%v'",
@@ -271,7 +271,7 @@ func Test_TADlist_DeleteDeny(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			gotOK := tc.adl.DeleteDeny(tc.pattern)
+			gotOK := tc.adl.DeleteDeny(context.TODO(), tc.pattern)
 
 			if gotOK != tc.wantOK {
 				t.Errorf("TADlist.DeleteDeny() = '%v', want '%v'",
