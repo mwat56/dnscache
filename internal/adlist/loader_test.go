@@ -19,7 +19,8 @@ import (
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
 func Test_tABPLoader_Load(t *testing.T) {
-	// tmpDir := t.TempDir()
+	loader := &tABPLoader{}
+	tmpDir := t.TempDir()
 	tests := []struct {
 		name     string
 		al       *tABPLoader
@@ -27,7 +28,7 @@ func Test_tABPLoader_Load(t *testing.T) {
 		node     *tNode
 		wantErr  bool
 	}{
-		/* * /
+		/* */
 		{
 			name:     "01 - nil loader",
 			al:       nil,
@@ -37,28 +38,28 @@ func Test_tABPLoader_Load(t *testing.T) {
 		},
 		{
 			name:     "02 - empty filename",
-			al:       &tABPLoader{},
+			al:       loader,
 			filename: "",
 			node:     newNode(),
 			wantErr:  true,
 		},
 		{
 			name:     "03 - nil node",
-			al:       &tABPLoader{},
+			al:       loader,
 			filename: filepath.Join(tmpDir, "03_abp.txt"),
 			node:     nil,
 			wantErr:  true,
 		},
 		{
 			name:     "04 - non existing file",
-			al:       &tABPLoader{},
+			al:       loader,
 			filename: filepath.Join(tmpDir, "04_abp.txt"),
 			node:     newNode(),
 			wantErr:  true,
 		},
 		{
 			name: "05 - reader with comments",
-			al:   &tABPLoader{},
+			al:   loader,
 			filename: func() string {
 				fName := filepath.Join(tmpDir, "05_abp.txt")
 				f, _ := os.Create(fName)
@@ -67,11 +68,11 @@ func Test_tABPLoader_Load(t *testing.T) {
 				return fName
 			}(),
 			node:    newNode(),
-			wantErr: false,
+			wantErr: true,
 		},
 		{
 			name: "06 - reader with empty lines",
-			al:   &tABPLoader{},
+			al:   loader,
 			filename: func() string {
 				fName := filepath.Join(tmpDir, "06_abp.txt")
 				f, _ := os.Create(fName)
@@ -80,11 +81,11 @@ func Test_tABPLoader_Load(t *testing.T) {
 				return fName
 			}(),
 			node:    newNode(),
-			wantErr: false,
+			wantErr: true,
 		},
 		{
 			name: "07 - reader with valid data",
-			al:   &tABPLoader{},
+			al:   loader,
 			filename: func() string {
 				fName := filepath.Join(tmpDir, "07_abp.txt")
 				f, _ := os.Create(fName)
@@ -97,7 +98,7 @@ func Test_tABPLoader_Load(t *testing.T) {
 		},
 		{
 			name: "08 - reader with invalid data",
-			al:   &tABPLoader{},
+			al:   loader,
 			filename: func() string {
 				fName := filepath.Join(tmpDir, "08_abp.txt")
 				f, _ := os.Create(fName)
@@ -111,7 +112,7 @@ func Test_tABPLoader_Load(t *testing.T) {
 		/* */
 		{
 			name:     "09 - reader with local ABP file",
-			al:       &tABPLoader{},
+			al:       loader,
 			filename: "/home/matthias/devel/Go/src/github.com/mwat56/dnscache/internal/adlist/fanboy-annoyance.abp.hosts",
 			node:     newNode(),
 			wantErr:  false,
@@ -554,7 +555,7 @@ func Test_tSimpleSaver_Save(t *testing.T) {
 	}
 } // Test_tSimpleSaver_Save()
 
-func Test_DownloadFile(t *testing.T) {
+func Test_downloadFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	tests := []struct {
 		name     string
@@ -606,7 +607,7 @@ func Test_DownloadFile(t *testing.T) {
 			}
 		})
 	}
-} // Test_DownloadFile()
+} // Test_downloadFile()
 
 func Test_isABPfile(t *testing.T) {
 	tests := []struct {
@@ -864,7 +865,7 @@ func Test_isHostsFile(t *testing.T) {
 		file   io.ReadSeeker
 		wantOK bool
 	}{
-		/* * /
+		/* */
 		{
 			name:   "01 - nil file",
 			file:   nil,
@@ -901,7 +902,7 @@ func Test_isHostsFile(t *testing.T) {
 			file:   bytes.NewReader([]byte("127.0.0.0 localdomain\n127.0.0.1 localhost\n# Comment")),
 			wantOK: true,
 		},
-		/* * /
+		/* */
 		{
 			name:   "08 - empty lines only",
 			file:   bytes.NewReader([]byte("\n\n\n")),

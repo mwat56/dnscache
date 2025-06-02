@@ -653,9 +653,9 @@ func detectFileType(aFilename string) (rMime string, rErr error) {
 //   - `aFilename`: The filename to save the data as.
 //
 // Returns:
-//   - `rFile`: The absolute path/name of the downloaded file.
+//   - `rFilename`: The absolute path/name of the downloaded file.
 //   - `rErr`: `nil` if the file was downloaded and saved successfully, the error otherwise.
-func downloadFile(aURL, aFilename string) (rFile string, rErr error) {
+func downloadFile(aURL, aFilename string) (rFilename string, rErr error) {
 	if aURL = strings.TrimSpace(aURL); 0 == len(aURL) {
 		rErr = ErrInvalidUrl
 		return
@@ -670,7 +670,7 @@ func downloadFile(aURL, aFilename string) (rFile string, rErr error) {
 
 	// Ensure the directory exists. If `dir` is already a directory,
 	// `MkdirAll` does nothing and returns nil.
-	if rErr = os.MkdirAll(dir, 0750); nil != rErr { // #-nosec G304
+	if rErr = os.MkdirAll(dir, 0750); nil != rErr {
 		rErr = ADlistError{fmt.Errorf("Failed to create directory: %v", rErr)}
 		return
 	}
@@ -715,7 +715,7 @@ func downloadFile(aURL, aFilename string) (rFile string, rErr error) {
 		rErr = ADlistError{fmt.Errorf("Failed to rename file: %v", rErr)}
 		return
 	}
-	rFile = aFilename
+	rFilename = aFilename
 
 	return
 } // downloadFile()

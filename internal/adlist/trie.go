@@ -10,7 +10,6 @@ import (
 	"context"
 	"os"
 	"runtime"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -131,22 +130,6 @@ func (t *tTrie) AllPatterns(aCtx context.Context) (rList tPartsList) {
 
 	return
 } // AllPatterns()
-
-/*
-// `clone()` returns a deep copy of the trie.
-//
-// Returns:
-//   - `*tTrie`: A deep copy of the trie.
-func (t *tTrie) clone() *tTrie {
-	clone := newTrie()
-
-	t.tRoot.RLock()
-	clone.tRoot = t.tRoot.clone()
-	t.tRoot.RUnlock()
-
-	return clone
-} // clone()
-*/
 
 // `Count()` returns the number of nodes and patterns in the trie.
 //
@@ -309,6 +292,82 @@ const (
 	localExt = ".local"
 )
 
+// `downAndSelectLoader()` downloads a file from the given URL, selects
+// the appropriate loader for the file type, and loads the patterns into
+// the given trie.
+//
+// Parameters:
+//   - `aCtx`: The context to use for the operation.
+//   - `aURL`: The URL to download the file from.
+//   - `aFilename`: The filename to save the data as.
+//   - `aNode`: The root node of the trie to load the patterns into.
+//
+// Returns:
+//   - `rErr`: `nil` if the file was downloaded and saved successfully, the error otherwise.
+func downAndSelectLoader(aCtx context.Context, aURL, aFilename string, aNode *tNode) (rErr error) {
+
+	//TODO: Check whether there's a local copy of the file to download and
+	// use that instead of downloading it again. Consult the `lastLoadTime`
+	// Trie field and compare it with the file's modification time.
+
+	var (
+		filename string
+		loader   ILoader
+		mime     string
+	)
+	if filename, rErr = downloadFile(aURL, aFilename+downExt); nil != rErr {
+		return
+	}
+	if rErr = aCtx.Err(); nil != rErr {
+		return
+	}
+	// Check file type and use appropriate loader
+	if mime, rErr = detectFileType(filename); nil != rErr {
+		return
+	}
+
+	switch mime {
+	case "text/x-abp":
+		loader = &tABPLoader{}
+	case "text/x-hosts":
+		loader = &tHostsLoader{}
+	case "text/x-hostnames":
+		loader = &tSimpleLoader{}
+	default:
+		_ = os.Remove(filename)
+		rErr = ErrUnsupportedMime
+		return
+	}
+	rErr = loader.Load(aCtx, filename, aNode)
+
+	return
+} // downAndSelectLoader()
+
+// `saveLocally()` stores the trie in a local file.
+//
+// Parameters:
+//   - `aCtx`: The context to use for the operation.
+//   - `aFilename`: The absolute path/name to store the file as.
+//   - `aNode`: The root node of the trie to store.
+//
+// Returns:
+//   - `error`: `nil` if the file was stored successfully, the error otherwise.
+func saveLocally(aCtx context.Context, aFilename string, aNode *tNode) error {
+	localName := aFilename + localExt
+	localFile, err := os.OpenFile(localName, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600) //#nosec G304
+	if nil != err {
+		return err
+	}
+	defer localFile.Close()
+
+	saver := &tSimpleSaver{}
+	if err = aCtx.Err(); nil != err {
+		return err
+	}
+
+	return saver.Save(aCtx, localFile, aNode)
+} // saveLocally()
+
 // `loadRemote()` reads hostname patterns (FQDN or wildcards) from `aFilename`
 // and inserts them into the trie.
 //
@@ -330,75 +389,28 @@ func (t *tTrie) loadRemote(aCtx context.Context, aURL, aFilename string) (rErr e
 	}
 	// The arguments are already checked by the calling `TADlist`,
 	// so we can skip that here.
-	if rErr = aCtx.Err(); nil != rErr {
-		return
-	}
-	var (
-		mime   string
-		loader ILoader
-		saver  ISaver = &tSimpleSaver{}
-	)
-
-	//TODO: Check whether there's a local copy of the file to download and
-	// use that instead of downloading it again. Consult the `lastLoadTime`
-	// Trie field and compare it with the file's modification time.
-
-	if aFilename, rErr = downloadFile(aURL, aFilename+downExt); nil != rErr {
-		return
-	}
-	if rErr = aCtx.Err(); nil != rErr {
-		return
-	}
-	// Check file type and use appropriate loader
-	if mime, rErr = detectFileType(aFilename); nil != rErr {
-		return
-	}
-
-	switch mime {
-	case "text/x-abp":
-		loader = &tABPLoader{}
-	case "text/x-hosts":
-		loader = &tHostsLoader{}
-	case "text/x-hostnames":
-		loader = &tSimpleLoader{}
-	default:
-		_ = os.Remove(aFilename)
-		return ErrUnsupportedMime
-	}
-
-	// Load the file into a new trie
 	newRoot := newTrie()
-	if rErr = loader.Load(aCtx, aFilename, newRoot.root.node); nil != rErr {
+
+	if rErr = downAndSelectLoader(aCtx, aURL, aFilename, newRoot.root.node); nil != rErr {
 		return
 	}
 	if rErr = aCtx.Err(); nil != rErr {
 		return
 	}
-
-	//TODO: remove `downExt` from `aFilename`
-	aFilename = strings.TrimSuffix(aFilename, downExt)
-	localName := aFilename + localExt
 
 	// Store the new trie in a local file
-	localFile, err := os.OpenFile(localName, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600) //#nosec g304
-	if nil != err {
-		rErr = err
-		return
-	}
-	defer localFile.Close()
-
-	if rErr = saver.Save(aCtx, localFile, newRoot.root.node); nil != rErr {
-		return
-	}
-	if rErr = aCtx.Err(); nil != rErr {
+	if rErr = saveLocally(aCtx, aFilename, newRoot.root.node); nil != rErr {
 		return
 	}
 
-	newRoot.lastLoadTime = time.Now()
-	newRoot.filename = aFilename
-	newRoot.url = aURL
+	// We're almost done, hence there's no point in checking
+	// for timeout or cancellation anymore.
+
 	t.root.Lock()
 	t.root.node = newRoot.root.node
+	t.lastLoadTime = time.Now()
+	t.filename = aFilename
+	t.url = aURL
 	t.root.Unlock()
 
 	return

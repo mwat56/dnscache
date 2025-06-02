@@ -439,7 +439,7 @@ func Test_tTrie_loadLocal(t *testing.T) {
 		fName   string
 		wantErr bool
 	}{
-		/* * /
+		/* */
 		{
 			name:    "01 - nil trie",
 			trie:    nil,
@@ -458,7 +458,6 @@ func Test_tTrie_loadLocal(t *testing.T) {
 			fName:   filepath.Join(tmpDir, "doesnotexist.txt"),
 			wantErr: true,
 		},
-		/* */
 		{
 			name: "04 - empty file",
 			trie: newTrie(),
@@ -471,7 +470,6 @@ func Test_tTrie_loadLocal(t *testing.T) {
 			}(),
 			wantErr: false,
 		},
-		/* * /
 		{
 			name: "05 - valid file",
 			trie: newTrie(),
@@ -541,7 +539,6 @@ func Test_tTrie_loadRemote(t *testing.T) {
 			}(),
 			wantErr: true,
 		},
-		/* */
 		{
 			name: "05 - valid file",
 			trie: newTrie(),
@@ -554,6 +551,14 @@ func Test_tTrie_loadRemote(t *testing.T) {
 				return fName
 			}(),
 			wantErr: true,
+		},
+		/* */
+		{
+			name:    "06 - valid file",
+			trie:    newTrie(),
+			url:     "https://adaway.org/hosts.txt",
+			fName:   filepath.Join(tmpDir, "hosts-06.txt"),
+			wantErr: false,
 		},
 		/* */
 		// TODO: Add test cases.
