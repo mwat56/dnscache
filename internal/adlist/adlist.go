@@ -59,6 +59,9 @@ var (
 
 // `NewADlist()` returns a new `TADlist` instance.
 //
+// The directory is created if it doesn't exist. If `aDataDir` is empty,
+// the system's temporary directory is used.
+//
 // Parameters:
 //   - `aDataDir`: The directory to use for local storage.
 //
@@ -69,9 +72,11 @@ func NewADlist(aDataDir string) *TADlist {
 		aDataDir = os.TempDir()
 	}
 
-	//
-	//TODO: Check whether `aDataDir` exists and create it if necessary.
-	//
+	// Create directory if it doesn't exist
+	if err := os.MkdirAll(aDataDir, 0750); nil != err {
+		// Fall back to temp directory if creation fails
+		aDataDir = os.TempDir()
+	}
 
 	return &TADlist{
 		datadir: aDataDir,
@@ -333,7 +338,7 @@ func urlPath2Filename(aURL string) (string, error) {
 	return string(filenameRE.ReplaceAll([]byte(path), []byte("_"))), nil
 } // urlPath2Filename()
 
-// `loadRemote()` downloads a file from the given URL and saves it in
+// `loadRemoteDeny()` downloads a file from the given URL and saves it in
 // the specified directory with the given filename.
 //
 // Afterwards it reads hostname patterns (FQDN or wildcards) from the file
@@ -350,7 +355,7 @@ func urlPath2Filename(aURL string) (string, error) {
 //
 // Returns:
 //   - `error`: An error in case of problems, or `nil` otherwise.
-func loadRemote(aCtx context.Context, aURL, aDir string, aList *tTrie) (rErr error) {
+func loadRemoteDeny(aCtx context.Context, aURL, aDir string, aList *tTrie) (rErr error) {
 	// No need to check arguments as that is done by the calling method.
 	if destUrl, err := url.Parse(aURL); nil == err {
 		// Turn URL string into net.URL and check for validity
@@ -387,7 +392,7 @@ func loadRemote(aCtx context.Context, aURL, aDir string, aList *tTrie) (rErr err
 	rErr = aList.loadRemote(ctx, aURL, filename)
 
 	return
-} // loadRemote()
+} // loadRemoteDeny()
 
 // `LoadDeny()` downloads a file from the given URL and saves it in
 // the specified directory with the given filename.
@@ -420,7 +425,7 @@ func (adl *TADlist) LoadDeny(aCtx context.Context, aURL string) error {
 		return ErrInvalidUrl
 	}
 
-	return loadRemote(aCtx, aURL, adl.datadir, adl.deny)
+	return loadRemoteDeny(aCtx, aURL, adl.datadir, adl.deny)
 } // LoadDeny()
 
 // `Match()` checks whether the given hostname should be allowed or blocked.
@@ -547,7 +552,7 @@ func (adl *TADlist) StoreDeny(aCtx context.Context) error {
 		return ErrListNil
 	}
 
-	return store(aCtx, adl.datadir, "deny.txt", adl.allow)
+	return store(aCtx, adl.datadir, "deny.txt", adl.deny)
 } // StoreDeny()
 
 // `String()` returns a string representation of the list.
