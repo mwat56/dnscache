@@ -48,26 +48,41 @@ const (
 
 	// `ADneutral` is the result of a test by [TADlist.Match].
 	ADneutral = TADresult(0)
+
+	// `adAllowFile` is the default filename for the allow list.
+	adAllowFile = "allow.txt"
+
+	// `adDenyFile` is the default filename for the deny list.
+	adDenyFile = "deny.txt"
 )
 
 var (
+	// `ErrListNil` is returned if the current `TADlist` instance is
+	// `nil` when one of its methods is called.
 	ErrListNil = ADlistError{errors.New("ADlist is nil")}
+
+	// `filenameRE` is a regular expression for invalid characters
+	// in a filename used by [urlPath2Filename].
+	filenameRE = regexp.MustCompile(`[^a-zA-Z0-9-_\.]`)
 )
 
 // ---------------------------------------------------------------------------
 // `TADlist` constructor:
 
-// `NewADlist()` returns a new `TADlist` instance.
+// `New()` returns a new `TADlist` instance.
 //
-// The directory is created if it doesn't exist. If `aDataDir` is empty,
-// the system's temporary directory is used.
+// If `aDataDir` is empty the system's temporary directory is used. If
+// it doesn't exist the directory is created.
+//
+// The constructor loads saved allow and deny lists from the given directory
+// if they exist to initialise the list.
 //
 // Parameters:
 //   - `aDataDir`: The directory to use for local storage.
 //
 // Returns:
 //   - `*TADlist`: A new `TADlist` instance.
-func NewADlist(aDataDir string) *TADlist {
+func New(aDataDir string) *TADlist {
 	if aDataDir = strings.TrimSpace(aDataDir); 0 == len(aDataDir) {
 		aDataDir = os.TempDir()
 	}
@@ -78,12 +93,22 @@ func NewADlist(aDataDir string) *TADlist {
 		aDataDir = os.TempDir()
 	}
 
-	return &TADlist{
+	adl := TADlist{
 		datadir: aDataDir,
 		allow:   newTrie(),
 		deny:    newTrie(),
 	}
-} // NewADlist()
+
+	fName := filepath.Join(adl.datadir, adAllowFile)
+	fName, _ = filepath.Abs(fName)
+	_ = adl.allow.loadLocal(context.Background(), fName)
+
+	fName = filepath.Join(adl.datadir, adDenyFile)
+	fName, _ = filepath.Abs(fName)
+	_ = adl.deny.loadLocal(context.Background(), fName)
+
+	return &adl
+} // New()
 
 // ---------------------------------------------------------------------------
 // `TADlist` methods:
@@ -139,7 +164,7 @@ func (adl *TADlist) AddAllow(aCtx context.Context, aPattern string) bool {
 	}
 
 	// Save the modified allow list
-	filename, err := filepath.Abs(filepath.Join(adl.datadir, "allow.txt"))
+	filename, err := filepath.Abs(filepath.Join(adl.datadir, adAllowFile))
 	if nil != err {
 		return false
 	}
@@ -274,7 +299,7 @@ func (adl *TADlist) LoadAllow(aCtx context.Context, aFilename string) (rErr erro
 		return ErrListNil
 	}
 	if aFilename = strings.TrimSpace(aFilename); 0 == len(aFilename) {
-		aFilename = "allow.txt"
+		aFilename = adAllowFile
 	}
 	aFilename = filepath.Join(adl.datadir, aFilename)
 	if aFilename, rErr = filepath.Abs(aFilename); nil != rErr {
@@ -296,12 +321,6 @@ func (adl *TADlist) LoadAllow(aCtx context.Context, aFilename string) (rErr erro
 
 	return
 } // LoadAllow()
-
-var (
-	// `filenameRE` is a regular expression for invalid characters
-	// in a filename.
-	filenameRE = regexp.MustCompile(`[^a-zA-Z0-9-_\.]`)
-)
 
 // `urlPath2Filename()` converts an URL path to a filename.
 //
@@ -486,6 +505,30 @@ func (adl *TADlist) Match(aCtx context.Context, aHostPattern string) TADresult {
 	return ADneutral
 } // Match()
 
+// `Shutdown()` releases all resources used by the list.
+//
+// The method stores the allow and deny lists to disk before
+// returning.
+//
+// Returns:
+//   - `error`: `nil` if the lists were written successfully, the error otherwise.
+func (adl *TADlist) Shutdown() error {
+	if nil == adl {
+		return ErrListNil
+	}
+
+	err1 := adl.StoreAllow(context.Background())
+	err2 := adl.StoreDeny(context.Background())
+	if nil != err1 {
+		return err1
+	}
+	if nil != err2 {
+		return err2
+	}
+
+	return nil
+} // Shutdown()
+
 // `store()` writes all patterns currently in the list to the file.
 //
 // This function is not exported, as it is only used internally by the
@@ -534,7 +577,7 @@ func (adl *TADlist) StoreAllow(aCtx context.Context) error {
 		return ErrListNil
 	}
 
-	return store(aCtx, adl.datadir, "allow.txt", adl.allow)
+	return store(aCtx, adl.datadir, adAllowFile, adl.allow)
 } // StoreAllow()
 
 // `StoreDeny()` writes all patterns currently in the deny list to the file.
@@ -552,7 +595,7 @@ func (adl *TADlist) StoreDeny(aCtx context.Context) error {
 		return ErrListNil
 	}
 
-	return store(aCtx, adl.datadir, "deny.txt", adl.deny)
+	return store(aCtx, adl.datadir, adDenyFile, adl.deny)
 } // StoreDeny()
 
 // `String()` returns a string representation of the list.

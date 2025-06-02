@@ -15,13 +15,15 @@ import (
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
-func Test_NewADlist(t *testing.T) {
+func Test_New(t *testing.T) {
 	tests := []struct {
 		name string
+		dir  string
 		want *TADlist
 	}{
 		{
 			name: "01 - new list",
+			dir:  t.TempDir(),
 			want: &TADlist{
 				allow: newTrie(),
 				deny:  newTrie(),
@@ -32,23 +34,24 @@ func Test_NewADlist(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := NewADlist("")
+			got := New(tc.dir)
+
 			if nil == got {
-				t.Error("NewADlist() = nil, want non-nil")
+				t.Error("New() = nil, want non-nil")
 				return
 			}
 			if nil == tc.want {
-				t.Errorf("NewADlist() =\n%q\nwant 'nil'",
+				t.Errorf("New() =\n%q\nwant 'nil'",
 					got)
 				return
 			}
 			if !tc.want.Equal(got) {
-				t.Errorf("NewADlist() =\n%q\nwant\n%q",
+				t.Errorf("New() =\n%q\nwant\n%q",
 					got, tc.want)
 			}
 		})
 	}
-} // Test_NewADlist()
+} // Test_New()
 
 func Test_TADlist_AddAllow(t *testing.T) {
 	tests := []struct {
@@ -66,13 +69,13 @@ func Test_TADlist_AddAllow(t *testing.T) {
 		},
 		{
 			name:    "02 - empty pattern",
-			adl:     NewADlist(""),
+			adl:     New(t.TempDir()),
 			pattern: "",
 			wantOK:  false,
 		},
 		{
 			name:    "03 - add tld",
-			adl:     NewADlist(""),
+			adl:     New(t.TempDir()),
 			pattern: "tld",
 			wantOK:  true,
 		},
@@ -108,13 +111,13 @@ func Test_TADlist_AddDeny(t *testing.T) {
 		},
 		{
 			name:    "02 - empty pattern",
-			adl:     NewADlist(""),
+			adl:     New(t.TempDir()),
 			pattern: "",
 			wantOK:  false,
 		},
 		{
 			name:    "03 - add tld",
-			adl:     NewADlist(""),
+			adl:     New(t.TempDir()),
 			pattern: "tld",
 			wantOK:  true,
 		},
@@ -150,20 +153,20 @@ func Test_TADlist_DeleteAllow(t *testing.T) {
 		},
 		{
 			name:    "02 - empty pattern",
-			adl:     NewADlist(""),
+			adl:     New(t.TempDir()),
 			pattern: "",
 			wantOK:  false,
 		},
 		{
 			name:    "03 - delete missing tld",
-			adl:     NewADlist(""),
+			adl:     New(t.TempDir()),
 			pattern: "tld",
 			wantOK:  false,
 		},
 		{
 			name: "04 - delete added tld",
 			adl: func() *TADlist {
-				a := NewADlist("")
+				a := New(t.TempDir())
 				a.AddAllow(context.TODO(), "tld")
 				return a
 			}(),
@@ -173,7 +176,7 @@ func Test_TADlist_DeleteAllow(t *testing.T) {
 		{
 			name: "05 - delete added domain.tld",
 			adl: func() *TADlist {
-				a := NewADlist("")
+				a := New(t.TempDir())
 				a.AddAllow(context.TODO(), "domain.tld")
 				return a
 			}(),
@@ -183,7 +186,7 @@ func Test_TADlist_DeleteAllow(t *testing.T) {
 		{
 			name: "06 - delete added sub.domain.tld",
 			adl: func() *TADlist {
-				a := NewADlist("")
+				a := New(t.TempDir())
 				a.AddAllow(context.TODO(), "sub.domain.tld")
 				return a
 			}(),
@@ -222,20 +225,20 @@ func Test_TADlist_DeleteDeny(t *testing.T) {
 		},
 		{
 			name:    "02 - empty pattern",
-			adl:     NewADlist(""),
+			adl:     New(t.TempDir()),
 			pattern: "",
 			wantOK:  false,
 		},
 		{
 			name:    "03 - delete missing tld",
-			adl:     NewADlist(""),
+			adl:     New(t.TempDir()),
 			pattern: "tld",
 			wantOK:  false,
 		},
 		{
 			name: "04 - delete added tld",
 			adl: func() *TADlist {
-				a := NewADlist("")
+				a := New(t.TempDir())
 				a.AddDeny(context.TODO(), "tld")
 				return a
 			}(),
@@ -245,7 +248,7 @@ func Test_TADlist_DeleteDeny(t *testing.T) {
 		{
 			name: "05 - delete added domain.tld",
 			adl: func() *TADlist {
-				a := NewADlist("")
+				a := New(t.TempDir())
 				a.AddDeny(context.TODO(), "domain.tld")
 				return a
 			}(),
@@ -255,7 +258,7 @@ func Test_TADlist_DeleteDeny(t *testing.T) {
 		{
 			name: "06 - delete added sub.domain.tld",
 			adl: func() *TADlist {
-				a := NewADlist("")
+				a := New(t.TempDir())
 				a.AddDeny(context.TODO(), "sub.domain.tld")
 				return a
 			}(),
@@ -279,7 +282,7 @@ func Test_TADlist_DeleteDeny(t *testing.T) {
 } // Test_TADlist_DeleteDeny()
 
 func Test_TADlist_Equal(t *testing.T) {
-	adlist := NewADlist("")
+	adlist := New(t.TempDir())
 	tests := []struct {
 		name   string
 		adl    *TADlist
@@ -308,7 +311,7 @@ func Test_TADlist_Equal(t *testing.T) {
 		{
 			name:   "04 - equal lists",
 			adl:    adlist,
-			other:  NewADlist(""),
+			other:  New(t.TempDir()),
 			wantOK: true,
 		},
 		{
@@ -320,14 +323,14 @@ func Test_TADlist_Equal(t *testing.T) {
 		{
 			name: "05 - equal lists with allow patterns",
 			adl: func() *TADlist {
-				a := NewADlist("")
+				a := New(t.TempDir())
 				a.AddAllow(context.TODO(), "tld")
 				a.AddAllow(context.TODO(), "domain.tld")
 				a.AddAllow(context.TODO(), "sub.domain.tld")
 				return a
 			}(),
 			other: func() *TADlist {
-				a := NewADlist("")
+				a := New(t.TempDir())
 				a.AddAllow(context.TODO(), "tld")
 				a.AddAllow(context.TODO(), "domain.tld")
 				a.AddAllow(context.TODO(), "sub.domain.tld")
@@ -338,14 +341,14 @@ func Test_TADlist_Equal(t *testing.T) {
 		{
 			name: "06 - equal lists with deny patterns",
 			adl: func() *TADlist {
-				a := NewADlist("")
+				a := New(t.TempDir())
 				a.AddDeny(context.TODO(), "tld")
 				a.AddDeny(context.TODO(), "domain.tld")
 				a.AddDeny(context.TODO(), "sub.domain.tld")
 				return a
 			}(),
 			other: func() *TADlist {
-				a := NewADlist("")
+				a := New(t.TempDir())
 				a.AddDeny(context.TODO(), "tld")
 				a.AddDeny(context.TODO(), "domain.tld")
 				a.AddDeny(context.TODO(), "sub.domain.tld")
@@ -356,7 +359,7 @@ func Test_TADlist_Equal(t *testing.T) {
 		{
 			name: "07 - lists with different allow and deny patterns",
 			adl: func() *TADlist {
-				a := NewADlist("")
+				a := New(t.TempDir())
 				a.AddAllow(context.TODO(), "tld")
 				a.AddAllow(context.TODO(), "domain.tld")
 				a.AddAllow(context.TODO(), "sub.domain.tld")
@@ -366,7 +369,7 @@ func Test_TADlist_Equal(t *testing.T) {
 				return a
 			}(),
 			other: func() *TADlist {
-				a := NewADlist("")
+				a := New(t.TempDir())
 				a.AddAllow(context.TODO(), "domain.tld")
 				a.AddAllow(context.TODO(), "sub.domain.tld")
 				a.AddDeny(context.TODO(), "domain.tld")
@@ -392,7 +395,6 @@ func Test_TADlist_Equal(t *testing.T) {
 } // Test_TADlist_Equal()
 
 func Test_TADlist_LoadAllow(t *testing.T) {
-	tmpDir := t.TempDir()
 	tests := []struct {
 		name    string
 		adl     *TADlist
@@ -408,16 +410,16 @@ func Test_TADlist_LoadAllow(t *testing.T) {
 		},
 		{
 			name:    "02 - non-existent file",
-			adl:     NewADlist(tmpDir),
+			adl:     New(t.TempDir()),
 			fName:   "doesnotexist-02.txt",
 			wantErr: true,
 		},
 		/* */
 		{
 			name: "03 - valid file with empty lines",
-			adl:  NewADlist(tmpDir),
+			adl:  New(t.TempDir()),
 			fName: func() string {
-				fName := filepath.Join(tmpDir, "allow-03.txt")
+				fName := filepath.Join(t.TempDir(), "allow-03.txt")
 				f, _ := os.Create(fName)
 				_, _ = f.WriteString("\n\n\n")
 				_ = f.Close()
@@ -442,7 +444,6 @@ func Test_TADlist_LoadAllow(t *testing.T) {
 } // Test_TADlist_LoadAllow()
 
 func Test_TADlist_LoadDeny(t *testing.T) {
-	tmpDir := t.TempDir()
 	tests := []struct {
 		name    string
 		adl     *TADlist
@@ -458,13 +459,13 @@ func Test_TADlist_LoadDeny(t *testing.T) {
 		},
 		{
 			name:    "02 - non-existent file",
-			adl:     NewADlist(tmpDir),
+			adl:     New(t.TempDir()),
 			url:     "http://example.com/deny.txt",
 			wantErr: true,
 		},
 		{
 			name:    "03 - valid file with empty lines",
-			adl:     NewADlist(tmpDir),
+			adl:     New(t.TempDir()),
 			url:     "http://example.com/deny.txt",
 			wantErr: true,
 		},
@@ -500,20 +501,20 @@ func Test_TADlist_Match(t *testing.T) {
 		},
 		{
 			name:     "02 - empty hostname",
-			adl:      NewADlist(""),
+			adl:      New(t.TempDir()),
 			hostname: "",
 			want:     ADneutral,
 		},
 		{
 			name:     "03 - non-matching hostname",
-			adl:      NewADlist(""),
+			adl:      New(t.TempDir()),
 			hostname: "nothing.will.be.matched.in.an.empty.tree",
 			want:     ADneutral,
 		},
 		{
 			name: "04 - match allow tld",
 			adl: func() *TADlist {
-				a := NewADlist("")
+				a := New(t.TempDir())
 				a.AddAllow(context.TODO(), "tld")
 				return a
 			}(),
@@ -523,7 +524,7 @@ func Test_TADlist_Match(t *testing.T) {
 		{
 			name: "05 - match allow domain.tld",
 			adl: func() *TADlist {
-				a := NewADlist("")
+				a := New(t.TempDir())
 				a.AddAllow(context.TODO(), "domain.tld")
 				return a
 			}(),
@@ -533,7 +534,7 @@ func Test_TADlist_Match(t *testing.T) {
 		{
 			name: "06 - match allow sub.domain.tld",
 			adl: func() *TADlist {
-				a := NewADlist("")
+				a := New(t.TempDir())
 				a.AddAllow(context.TODO(), "sub.domain.tld")
 				return a
 			}(),
@@ -556,7 +557,6 @@ func Test_TADlist_Match(t *testing.T) {
 } // Test_TADlist_Match()
 
 func Test_TADlist_StoreAllow(t *testing.T) {
-	tmpDir := t.TempDir()
 	tests := []struct {
 		name    string
 		adl     *TADlist
@@ -570,13 +570,13 @@ func Test_TADlist_StoreAllow(t *testing.T) {
 		},
 		{
 			name:    "02 - empty trie",
-			adl:     NewADlist(tmpDir),
+			adl:     New(t.TempDir()),
 			wantErr: true,
 		},
 		{
 			name: "03 - valid filename",
 			adl: func() *TADlist {
-				ad := NewADlist(tmpDir)
+				ad := New(t.TempDir())
 				ad.AddAllow(context.TODO(), "domain.tld")
 				return ad
 			}(),
@@ -599,7 +599,6 @@ func Test_TADlist_StoreAllow(t *testing.T) {
 } // Test_TADlist_StoreAllow()
 
 func Test_TADlist_StoreDeny(t *testing.T) {
-	tmpDir := t.TempDir()
 	tests := []struct {
 		name    string
 		adl     *TADlist
@@ -613,12 +612,12 @@ func Test_TADlist_StoreDeny(t *testing.T) {
 		},
 		{
 			name:    "02 - empty List",
-			adl:     NewADlist(tmpDir),
+			adl:     New(t.TempDir()),
 			wantErr: true,
 		},
 		{
 			name:    "03 - valid filename",
-			adl:     NewADlist(tmpDir),
+			adl:     New(t.TempDir()),
 			wantErr: true,
 		},
 		/* */
@@ -651,13 +650,13 @@ func Test_TADlist_String(t *testing.T) {
 		},
 		{
 			name: "02 - empty list",
-			adl:  NewADlist(""),
+			adl:  New(t.TempDir()),
 			want: "Allow:\n\"Trie\":\n  isEnd: false\n  isWild: false\n\nDeny:\n\"Trie\":\n  isEnd: false\n  isWild: false\n",
 		},
 		{
 			name: "03 - one allow pattern",
 			adl: func() *TADlist {
-				a := NewADlist("")
+				a := New(t.TempDir())
 				a.AddAllow(context.TODO(), "tld")
 				return a
 			}(),
@@ -666,7 +665,7 @@ func Test_TADlist_String(t *testing.T) {
 		{
 			name: "04 - one deny pattern",
 			adl: func() *TADlist {
-				a := NewADlist("")
+				a := New(t.TempDir())
 				a.AddDeny(context.TODO(), "tld")
 				return a
 			}(),
@@ -675,7 +674,7 @@ func Test_TADlist_String(t *testing.T) {
 		{
 			name: "05 - two allow patterns",
 			adl: func() *TADlist {
-				a := NewADlist("")
+				a := New(t.TempDir())
 				a.AddAllow(context.TODO(), "tld")
 				a.AddAllow(context.TODO(), "domain.tld")
 				return a
@@ -685,7 +684,7 @@ func Test_TADlist_String(t *testing.T) {
 		{
 			name: "06 - two deny patterns",
 			adl: func() *TADlist {
-				a := NewADlist("")
+				a := New(t.TempDir())
 				a.AddDeny(context.TODO(), "tld")
 				a.AddDeny(context.TODO(), "domain.tld")
 				return a
@@ -725,21 +724,21 @@ func Test_TADlist_UpdateAllow(t *testing.T) {
 		},
 		{
 			name:       "02 - empty old pattern",
-			adl:        NewADlist(""),
+			adl:        New(t.TempDir()),
 			oldPattern: "",
 			newPattern: "tld",
 			wantOK:     false,
 		},
 		{
 			name:       "03 - empty new pattern",
-			adl:        NewADlist(""),
+			adl:        New(t.TempDir()),
 			oldPattern: "tld",
 			newPattern: "",
 			wantOK:     false,
 		},
 		{
 			name:       "04 - equal old and new pattern",
-			adl:        NewADlist(""),
+			adl:        New(t.TempDir()),
 			oldPattern: "tld",
 			newPattern: "tld",
 			wantOK:     false,
@@ -747,7 +746,7 @@ func Test_TADlist_UpdateAllow(t *testing.T) {
 		{
 			name: "05 - update non-existent old pattern",
 			adl: func() *TADlist {
-				a := NewADlist("")
+				a := New(t.TempDir())
 				a.AddAllow(context.TODO(), "tld")
 				return a
 			}(),
@@ -758,7 +757,7 @@ func Test_TADlist_UpdateAllow(t *testing.T) {
 		{
 			name: "06 - update existing old pattern",
 			adl: func() *TADlist {
-				a := NewADlist("")
+				a := New(t.TempDir())
 				a.AddAllow(context.TODO(), "tld")
 				return a
 			}(),
@@ -799,21 +798,21 @@ func Test_TADlist_UpdateDeny(t *testing.T) {
 		},
 		{
 			name:       "02 - empty old pattern",
-			adl:        NewADlist(""),
+			adl:        New(t.TempDir()),
 			oldPattern: "",
 			newPattern: "tld",
 			wantOK:     false,
 		},
 		{
 			name:       "03 - empty new pattern",
-			adl:        NewADlist(""),
+			adl:        New(t.TempDir()),
 			oldPattern: "tld",
 			newPattern: "",
 			wantOK:     false,
 		},
 		{
 			name:       "04 - equal old and new pattern",
-			adl:        NewADlist(""),
+			adl:        New(t.TempDir()),
 			oldPattern: "tld",
 			newPattern: "tld",
 			wantOK:     false,
@@ -821,7 +820,7 @@ func Test_TADlist_UpdateDeny(t *testing.T) {
 		{
 			name: "05 - update non-existent old pattern",
 			adl: func() *TADlist {
-				a := NewADlist("")
+				a := New(t.TempDir())
 				a.AddDeny(context.TODO(), "tld")
 				return a
 			}(),
@@ -832,7 +831,7 @@ func Test_TADlist_UpdateDeny(t *testing.T) {
 		{
 			name: "06 - update existing old pattern",
 			adl: func() *TADlist {
-				a := NewADlist("")
+				a := New(t.TempDir())
 				a.AddDeny(context.TODO(), "tld")
 				return a
 			}(),
