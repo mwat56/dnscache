@@ -9,6 +9,7 @@ package adlist
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -358,16 +359,16 @@ func urlPath2Filename(aURL string) (string, error) {
 // the specified directory with the given filename.
 //
 // Afterwards it reads hostname patterns (FQDN or wildcards) from the file
-// and inserts them into the given list.
+// and inserts them into the given deny list.
 //
 // This function is not exported, as it is only used internally by the
 // `LoadDeny()` method.
 //
 // Parameters:
 //   - `aCtx`: The context to use for the operation.
-//   - `aURL`: The URL to download the file from.
+//   - `aURL`: The URL to download the host patterns from.
 //   - `aDir`: The directory name to save the file in.
-//   - `aList`: The list to add the patterns to.
+//   - `aList`: The deny list to add the patterns to.
 //
 // Returns:
 //   - `error`: An error in case of problems, or `nil` otherwise.
@@ -383,9 +384,6 @@ func loadRemoteDeny(aCtx context.Context, aURL, aDir string, aList *tTrie) (rErr
 	} else {
 		rErr = ErrInvalidUrl
 		return
-	}
-	if aDir = strings.TrimSpace(aDir); 0 == len(aDir) {
-		aDir = os.TempDir()
 	}
 
 	var filename string
@@ -416,32 +414,77 @@ func loadRemoteDeny(aCtx context.Context, aURL, aDir string, aList *tTrie) (rErr
 // Afterwards it reads hostname patterns (FQDN or wildcards) from the
 // file and inserts them into the deny list.
 //
-// If `aURL` is an empty string or the list itself is empty, the method
+// If `aURLs` is empty or the list itself is empty, the method
 // returns an error.
 //
 // Parameters:
 //   - `aCtx`: The context to use for the operation.
-//   - `aURL`: The URL to download the file from.
+//   - `aURLs`: The URLs to download the host patterns from.
 //
 // Returns:
 //   - `error`: An error in case of problems, or `nil` otherwise.
 //
 // see [LoadAllow], [StoreDeny]
-func (adl *TADlist) LoadDeny(aCtx context.Context, aURL string) error {
+func (adl *TADlist) LoadDeny(aCtx context.Context, aURLs []string) error {
 	if nil == adl {
 		return ErrListNil
 	}
 
-	//
-	//TODO: Loop through all arguments and merge them all into
-	// a single deny list.
-	//
-
-	if aURL = strings.TrimSpace(aURL); 0 == len(aURL) {
+	uLen := len(aURLs)
+	if 0 == uLen {
 		return ErrInvalidUrl
 	}
 
-	return loadRemoteDeny(aCtx, aURL, adl.datadir, adl.deny)
+	var wg sync.WaitGroup
+	// Buffered channel prevents blocking and deadlocks
+	errChan := make(chan error, uLen)
+	newRoot := newTrie()
+
+	// Process all provided URLs
+	for _, uri := range aURLs {
+		// Avoid closure capturing of loop variables
+		url := strings.TrimSpace(uri)
+		if 0 == len(url) {
+			continue
+		}
+
+		wg.Add(1)
+		go func(aUrl string) {
+			defer wg.Done()
+			if err := loadRemoteDeny(aCtx, aUrl, adl.datadir, newRoot); nil != err {
+				// Send error to channel
+				errChan <- fmt.Errorf("URL %q: %w", aUrl, err)
+			}
+		}(url)
+	}
+	wg.Wait()
+	close(errChan) // Safe closure after all sends are done
+
+	var (
+		err  error
+		errs []error
+	)
+	for err = range errChan {
+		errs = append(errs, err)
+	}
+	if 0 < len(errs) {
+		if 1 < len(errs) {
+			// Join all errors into a single one
+			err = errors.Join(errs...)
+		} else {
+			// Only one error, so use it directly
+			err = errs[0]
+		}
+	}
+
+	if 0 < len(newRoot.root.node.tChildren) {
+		// Replace the old deny list with the new one
+		adl.deny.root.Lock()
+		adl.deny.root.node = newRoot.root.node
+		adl.deny.root.Unlock()
+	}
+
+	return err
 } // LoadDeny()
 
 // `Match()` checks whether the given hostname should be allowed or blocked.

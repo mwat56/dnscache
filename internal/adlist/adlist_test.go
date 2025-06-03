@@ -447,26 +447,26 @@ func Test_TADlist_LoadDeny(t *testing.T) {
 	tests := []struct {
 		name    string
 		adl     *TADlist
-		url     string
+		urls    []string
 		wantErr bool
 	}{
 		/* */
 		{
 			name:    "01 - nil list",
 			adl:     nil,
-			url:     "http://example.com/deny.txt",
+			urls:    []string{"http://example.com/deny.txt"},
 			wantErr: true,
 		},
 		{
 			name:    "02 - non-existent file",
 			adl:     New(t.TempDir()),
-			url:     "http://example.com/deny.txt",
+			urls:    []string{"http://example.com/deny.txt"},
 			wantErr: true,
 		},
 		{
 			name:    "03 - valid file with empty lines",
 			adl:     New(t.TempDir()),
-			url:     "http://example.com/deny.txt",
+			urls:    []string{"http://example.com/deny.txt"},
 			wantErr: true,
 		},
 		/* */
@@ -475,7 +475,7 @@ func Test_TADlist_LoadDeny(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.adl.LoadDeny(context.TODO(), tc.url)
+			err := tc.adl.LoadDeny(context.TODO(), tc.urls)
 
 			if (nil != err) != tc.wantErr {
 				t.Errorf("TADlist.LoadDeny() error = '%v', wantErr '%v'",
