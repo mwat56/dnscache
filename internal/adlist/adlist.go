@@ -435,7 +435,11 @@ func (adl *TADlist) LoadDeny(aCtx context.Context, aURLs []string) error {
 		return ErrInvalidUrl
 	}
 
-	var wg sync.WaitGroup
+	var (
+		err  error
+		errs []error
+		wg   sync.WaitGroup
+	)
 	// Buffered channel prevents blocking and deadlocks
 	errChan := make(chan error, uLen)
 	newRoot := newTrie()
@@ -460,10 +464,6 @@ func (adl *TADlist) LoadDeny(aCtx context.Context, aURLs []string) error {
 	wg.Wait()
 	close(errChan) // Safe closure after all sends are done
 
-	var (
-		err  error
-		errs []error
-	)
 	for err = range errChan {
 		errs = append(errs, err)
 	}
@@ -552,21 +552,30 @@ func (adl *TADlist) Match(aCtx context.Context, aHostPattern string) TADresult {
 //
 // Returns:
 //   - `error`: `nil` if the lists were written successfully, the error otherwise.
-func (adl *TADlist) Shutdown() error {
+func (adl *TADlist) Shutdown() (rErr error) {
 	if nil == adl {
 		return ErrListNil
 	}
+	var errs []error
 
-	err1 := adl.StoreAllow(context.Background())
-	err2 := adl.StoreDeny(context.Background())
-	if nil != err1 {
-		return err1
+	if rErr = adl.StoreAllow(context.Background()); nil != rErr {
+		errs = append(errs, rErr)
 	}
-	if nil != err2 {
-		return err2
+	if rErr = adl.StoreDeny(context.Background()); nil != rErr {
+		errs = append(errs, rErr)
 	}
 
-	return nil
+	if 0 < len(errs) {
+		if 1 < len(errs) {
+			// Join all errors into a single one
+			rErr = errors.Join(errs...)
+		} else {
+			// Only one error, so use it directly
+			rErr = errs[0]
+		}
+	}
+
+	return
 } // Shutdown()
 
 // `storeList()` writes all patterns currently in the list to the file.
@@ -579,7 +588,8 @@ func (adl *TADlist) Shutdown() error {
 //   - `aList`: The list to storeList.
 //
 // Returns:
-//   - `error`: `nil` if the patterns were written successfully, the error otherwise.
+//   - `error`: `nil` if the patterns were written successfully, the error
+//     otherwise.
 func storeList(aCtx context.Context, aList *tTrie) error {
 	if (nil == aList) || (0 == len(aList.root.node.tChildren)) {
 		return ErrListNil

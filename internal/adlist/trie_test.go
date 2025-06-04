@@ -432,7 +432,6 @@ func Test_tTrie_ForEach(t *testing.T) {
 } // Test_tTrie_ForEach()
 
 func Test_tTrie_loadLocal(t *testing.T) {
-	tmpDir := t.TempDir()
 	tests := []struct {
 		name    string
 		trie    *tTrie
@@ -443,26 +442,26 @@ func Test_tTrie_loadLocal(t *testing.T) {
 		{
 			name:    "01 - nil trie",
 			trie:    nil,
-			fName:   filepath.Join(tmpDir, "test.txt"),
+			fName:   filepath.Join(t.TempDir(), "test.txt"),
 			wantErr: true,
 		},
 		{
 			name:    "02 - nil root",
 			trie:    &tTrie{},
-			fName:   filepath.Join(tmpDir, "test.txt"),
+			fName:   filepath.Join(t.TempDir(), "test.txt"),
 			wantErr: true,
 		},
 		{
 			name:    "03 - non-existent file",
 			trie:    newTrie(),
-			fName:   filepath.Join(tmpDir, "doesnotexist.txt"),
+			fName:   filepath.Join(t.TempDir(), "doesnotexist.txt"),
 			wantErr: true,
 		},
 		{
 			name: "04 - empty file",
 			trie: newTrie(),
 			fName: func() string {
-				fName := filepath.Join(tmpDir, "empty-04.txt")
+				fName := filepath.Join(t.TempDir(), "empty-04.txt")
 				f, _ := os.Create(fName)
 				_, _ = f.WriteString("\n\n\n")
 				_ = f.Close()
@@ -474,7 +473,7 @@ func Test_tTrie_loadLocal(t *testing.T) {
 			name: "05 - valid file",
 			trie: newTrie(),
 			fName: func() string {
-				fName := filepath.Join(tmpDir, "valid.txt")
+				fName := filepath.Join(t.TempDir(), "valid.txt")
 				f, _ := os.Create(fName)
 				_, _ = f.WriteString("\n# this file contains only hostnames\nwww.example.com\n")
 				_ = f.Close()
@@ -499,7 +498,6 @@ func Test_tTrie_loadLocal(t *testing.T) {
 } // Test_tTrie_loadLocal()
 
 func Test_tTrie_loadRemote(t *testing.T) {
-	tmpDir := t.TempDir()
 	tests := []struct {
 		name    string
 		trie    *tTrie
@@ -511,19 +509,19 @@ func Test_tTrie_loadRemote(t *testing.T) {
 		{
 			name:    "01 - nil trie",
 			trie:    nil,
-			fName:   filepath.Join(tmpDir, "test.txt"),
+			fName:   filepath.Join(t.TempDir(), "test.txt"),
 			wantErr: true,
 		},
 		{
 			name:    "02 - nil root",
 			trie:    &tTrie{},
-			fName:   filepath.Join(tmpDir, "test.txt"),
+			fName:   filepath.Join(t.TempDir(), "test.txt"),
 			wantErr: true,
 		},
 		{
 			name:    "03 - non-existent file",
 			trie:    newTrie(),
-			fName:   filepath.Join(tmpDir, "doesnotexist.txt"),
+			fName:   filepath.Join(t.TempDir(), "doesnotexist.txt"),
 			wantErr: true,
 		},
 		{
@@ -531,7 +529,7 @@ func Test_tTrie_loadRemote(t *testing.T) {
 			trie: newTrie(),
 			url:  "http://example.com/empty.txt",
 			fName: func() string {
-				fName := filepath.Join(tmpDir, "empty.txt")
+				fName := filepath.Join(t.TempDir(), "empty.txt")
 				f, _ := os.Create(fName)
 				_, _ = f.WriteString("\n\n\n")
 				_ = f.Close()
@@ -544,7 +542,7 @@ func Test_tTrie_loadRemote(t *testing.T) {
 			trie: newTrie(),
 			url:  "http://example.com/empty.txt",
 			fName: func() string {
-				fName := filepath.Join(tmpDir, "valid.txt")
+				fName := filepath.Join(t.TempDir(), "valid.txt")
 				f, _ := os.Create(fName)
 				_, _ = f.WriteString("\n# this file contains only hostnames\nwww.example.com\n")
 				_ = f.Close()
@@ -557,7 +555,7 @@ func Test_tTrie_loadRemote(t *testing.T) {
 			name:    "06 - valid file",
 			trie:    newTrie(),
 			url:     "https://adaway.org/hosts.txt",
-			fName:   filepath.Join(tmpDir, "hosts-06.txt"),
+			fName:   filepath.Join(t.TempDir(), "hosts-06.txt"),
 			wantErr: false,
 		},
 		/* */
@@ -567,6 +565,7 @@ func Test_tTrie_loadRemote(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.trie.loadRemote(context.TODO(), tc.url, tc.fName)
+
 			if (nil != err) != tc.wantErr {
 				t.Errorf("tTrie.loadRemote() error = '%v', wantErr '%v'",
 					err, tc.wantErr)
@@ -796,7 +795,6 @@ func Test_tTrie_Metrics(t *testing.T) {
 } // Test_tTrie_Metrics()
 
 func Test_tTrie_storeFile(t *testing.T) {
-	tmpDir := t.TempDir()
 	tests := []struct {
 		name      string
 		trie      *tTrie
@@ -807,13 +805,13 @@ func Test_tTrie_storeFile(t *testing.T) {
 		{
 			name:      "01 - nil trie",
 			trie:      nil,
-			aFilename: filepath.Join(tmpDir, "test-01.txt"),
+			aFilename: filepath.Join(t.TempDir(), "test-01.txt"),
 			wantErr:   true,
 		},
 		{
 			name:      "02 - nil root",
 			trie:      &tTrie{},
-			aFilename: filepath.Join(tmpDir, "test-02.txt"),
+			aFilename: filepath.Join(t.TempDir(), "test-02.txt"),
 			wantErr:   true,
 		},
 		{
@@ -825,7 +823,7 @@ func Test_tTrie_storeFile(t *testing.T) {
 		{
 			name:      "04 - valid filename",
 			trie:      newTrie(),
-			aFilename: filepath.Join(tmpDir, "test-04.txt"),
+			aFilename: filepath.Join(t.TempDir(), "test-04.txt"),
 			wantErr:   false,
 		},
 		{
@@ -835,7 +833,7 @@ func Test_tTrie_storeFile(t *testing.T) {
 				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "host"})
 				return t
 			}(),
-			aFilename: filepath.Join(tmpDir, "test-05.txt"),
+			aFilename: filepath.Join(t.TempDir(), "test-05.txt"),
 			wantErr:   false,
 		},
 		{
@@ -850,7 +848,7 @@ func Test_tTrie_storeFile(t *testing.T) {
 				t.root.node.add(context.TODO(), tPartsList{"tld2", "domain", "host"})
 				return t
 			}(),
-			aFilename: filepath.Join(tmpDir, "test-06.txt"),
+			aFilename: filepath.Join(t.TempDir(), "test-06.txt"),
 			wantErr:   false,
 		},
 		/* */

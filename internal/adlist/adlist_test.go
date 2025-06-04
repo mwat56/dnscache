@@ -556,6 +556,50 @@ func Test_TADlist_Match(t *testing.T) {
 	}
 } // Test_TADlist_Match()
 
+func Test_TADlist_Shutdown(t *testing.T) {
+	tests := []struct {
+		name    string
+		adl     *TADlist
+		wantErr bool
+	}{
+		/* */
+		{
+			name:    "01 - nil list",
+			adl:     nil,
+			wantErr: true,
+		},
+		{
+			name:    "02 - empty list",
+			adl:     New(t.TempDir()),
+			wantErr: true,
+		},
+		{
+			name: "03 - valid names",
+			adl: func() *TADlist {
+				ad := New(t.TempDir())
+				ad.AddAllow(context.TODO(), "host.domain.tld")
+				ad.AddAllow(context.TODO(), "www.domain.tld")
+				ad.AddDeny(context.TODO(), "sub.domain.tld")
+				return ad
+			}(),
+			wantErr: false,
+		},
+		/* */
+		// TODO: Add test cases.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.adl.Shutdown()
+
+			if (nil != err) != tc.wantErr {
+				t.Errorf("TADlist.Shutdown() error = '%v', wantErr '%v'",
+					err, tc.wantErr)
+			}
+		})
+	}
+} // Test_TADlist_Shutdown()
+
 func Test_TADlist_StoreAllow(t *testing.T) {
 	tests := []struct {
 		name    string
