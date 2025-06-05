@@ -244,7 +244,7 @@ func Test_TResolver_Fetch(t *testing.T) {
 	}
 } // Test_TResolver_Fetch()
 
-func Test_TResolver_FetchOneString(t *testing.T) {
+func Test_TResolver_FetchFirstString(t *testing.T) {
 	type testCase struct {
 		name     string
 		hostname string
@@ -286,11 +286,11 @@ func Test_TResolver_FetchOneString(t *testing.T) {
 			resolver := New(0)
 			tc.setup(resolver)
 
-			got, err := resolver.FetchOneString(tc.hostname)
+			got, err := resolver.FetchFirstString(tc.hostname)
 
 			// Check error
 			if (nil != err) != tc.wantErr {
-				t.Errorf("FetchOneString() error = '%v', wantErr '%v'",
+				t.Errorf("FetchFirstString() error = '%v', wantErr '%v'",
 					err, tc.wantErr)
 				return
 			}
@@ -304,19 +304,19 @@ func Test_TResolver_FetchOneString(t *testing.T) {
 			// so we just check that we got a non-empty string
 			if "fetch uncached (lookup)" == tc.name {
 				if "" == got {
-					t.Errorf("FetchOneString() got empty string, want non-empty")
+					t.Errorf("FetchFirstString() got empty string, want non-empty")
 				}
 				return
 			}
 
 			// For cached case, check exact match
 			if got != tc.want {
-				t.Errorf("FetchOneString() got = %q, want %q",
+				t.Errorf("FetchFirstString() got = %q, want %q",
 					got, tc.want)
 			}
 		})
 	}
-} // Test_TResolver_FetchOneString()
+} // Test_TResolver_FetchFirstString()
 
 func Test_TResolver_FetchRandomString(t *testing.T) {
 	type testCase struct {
@@ -433,9 +433,9 @@ func Test_TResolver_Refresh(t *testing.T) {
 			},
 			validate: func(t *testing.T, r *TResolver) {
 				// After refresh, this entry should be removed
-				r.mtx.RLock()
+				r.RLock()
 				_, exists := r.tCacheList.getEntry("invalid.example.nonexistent")
-				r.mtx.RUnlock()
+				r.RUnlock()
 
 				if exists {
 					t.Errorf("Invalid entry should be removed from cache")

@@ -60,7 +60,7 @@ type (
 	// It embeds a map of DNS cache entries to store the DNS cache entries
 	// and uses a Mutex to synchronise access to that cache.
 	TResolver struct {
-		mtx          sync.RWMutex
+		sync.RWMutex
 		dnsServers   []string
 		abortExpire  chan struct{} // signal to abort `autoExpire()`
 		abortRefresh chan struct{} // signal to abort `autoRefresh()`
@@ -213,9 +213,9 @@ func (r *TResolver) autoRefresh(aRate time.Duration, aAbort chan struct{}) {
 //   - `[]net.IP`: List of IP addresses for the given hostname.
 //   - `error`: `nil` if the hostname was resolved successfully, the error otherwise.
 func (r *TResolver) Fetch(aHostname string) ([]net.IP, error) {
-	r.mtx.RLock()
+	r.RLock()
 	ips, ok := r.tCacheList.ips(aHostname)
-	r.mtx.RUnlock()
+	r.RUnlock()
 
 	if ok && (0 < len(ips)) {
 		incMetricsFields(&gMetrics.Lookups, &gMetrics.Hits)
@@ -226,7 +226,7 @@ func (r *TResolver) Fetch(aHostname string) ([]net.IP, error) {
 	incMetricsFields(&gMetrics.Misses)
 
 	// Use a context with timeout for the entire refresh operation
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*5)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute<<2)
 	defer cancel()
 	ips, err := r.Lookup(ctx, aHostname)
 	if nil != err {
@@ -237,7 +237,7 @@ func (r *TResolver) Fetch(aHostname string) ([]net.IP, error) {
 	return ips, err
 } // Fetch()
 
-// `FetchOne()` returns the first IP address for a given hostname.
+// `FetchFirst()` returns the first IP address for a given hostname.
 //
 // If the hostname has multiple IP addresses, the first one is returned;
 // to get a random IP address, use [FetchRandom].
@@ -248,16 +248,16 @@ func (r *TResolver) Fetch(aHostname string) ([]net.IP, error) {
 // Returns:
 //   - `net.IP`: First IP address for the given hostname.
 //   - `error`: `nil` if the hostname was resolved successfully, the error otherwise.
-func (r *TResolver) FetchOne(aHostname string) (net.IP, error) {
+func (r *TResolver) FetchFirst(aHostname string) (net.IP, error) {
 	ips, err := r.Fetch(aHostname)
 	if nil != err {
 		return nil, err
 	}
 
 	return ips[0], nil
-} // FetchOne()
+} // FetchFirst()
 
-// `FetchOneString()` returns the first IP address for a given hostname
+// `FetchFirstString()` returns the first IP address for a given hostname
 // as a string.
 //
 // Parameters:
@@ -266,19 +266,19 @@ func (r *TResolver) FetchOne(aHostname string) (net.IP, error) {
 // Returns:
 //   - `string`: First IP address for the given hostname as a string.
 //   - `error`: `nil` if the hostname was resolved successfully, the error otherwise.
-func (r *TResolver) FetchOneString(aHostname string) (string, error) {
-	ip, err := r.FetchOne(aHostname)
+func (r *TResolver) FetchFirstString(aHostname string) (string, error) {
+	ip, err := r.FetchFirst(aHostname)
 	if nil != err {
 		return "", err
 	}
 
 	return ip.String(), nil
-} // FetchOneString()
+} // FetchFirstString()
 
 // `FetchRandom()` returns a random IP address for a given hostname.
 //
 // If the hostname has multiple IP addresses, a random one is returned;
-// to get always the first one, use [FetchOne] instead.
+// to get always the first one, use [FetchFirst] instead.
 //
 // Parameters:
 //   - `aHostname`: The hostname to resolve.
@@ -304,7 +304,7 @@ func (r *TResolver) FetchRandom(aHostname string) (net.IP, error) {
 // as a string.
 //
 // If the hostname has multiple IP addresses, a random one is returned;
-// to get always the first one, use [FetchOneString] instead.
+// to get always the first one, use [FetchFirstString] instead.
 //
 // Parameters:
 //   - `aHostname`: The hostname to resolve.
@@ -410,10 +410,10 @@ func (r *TResolver) Lookup(aCtx context.Context, aHostname string) ([]net.IP, er
 	incMetricsFields(&gMetrics.Lookups)
 
 	// Cache the result
-	r.mtx.Lock()
+	r.Lock()
 	r.tCacheList.setEntry(aHostname, ips, r.ttl)
 	setMetricsFieldMax(&gMetrics.Peak, uint32(r.tCacheList.len())) //#nosec G115
-	r.mtx.Unlock()
+	r.Unlock()
 
 	return ips, nil
 } // Lookup()
@@ -441,11 +441,11 @@ func (r *TResolver) Refresh() {
 
 	var dnsErr *net.DNSError
 
-	r.mtx.RLock()
+	r.RLock()
 	// This is a shallow clone, the new keys and values
 	// are set using ordinary assignment:
 	hosts := r.tCacheList.clone()
-	r.mtx.RUnlock()
+	r.RUnlock()
 
 	for hostname := range *hosts {
 		select {
@@ -460,9 +460,9 @@ func (r *TResolver) Refresh() {
 						// We'e working on a (possibly outdated) copy
 						// of the cache, but we delete the non-existing
 						// host from our original cache:
-						r.mtx.Lock()
+						r.Lock()
 						r.tCacheList.delete(hostname)
-						r.mtx.Unlock()
+						r.Unlock()
 					}
 				}
 			}
