@@ -17,8 +17,8 @@ import (
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
 const (
-	// `DefaultCacheSize` is the default size of the cache list.
-	DefaultCacheSize = 64
+	// `DefaultCacheSize` is the initial size of the cache list.
+	DefaultCacheSize = 1 << 9 // 512
 )
 
 type (
@@ -30,24 +30,22 @@ type (
 // ---------------------------------------------------------------------------
 // `TCacheList` constructor:
 
-// `newCacheList()` returns a new TTL cache list.
+// `New()` returns a new IP address cache list.
 //
-// If `aSize` is zero, the default size (`64`) is used.
+// If `aSize` is zero, the default size (`512`) is used.
 //
 // Parameters:
 //   - `aSize`: Initial size of the cache list.
 //
 // Returns:
-//   - `*TCacheList`: A new TTL cache list.
-func newCacheList(aSize uint) *TCacheList {
+//   - `TCacheList`: A new IP address cache list.
+func New(aSize uint) TCacheList {
 	if 0 == aSize {
 		aSize = DefaultCacheSize
 	}
 
-	result := make(TCacheList, aSize)
-
-	return &result
-} // newCacheList()
+	return make(TCacheList, aSize)
+} // New()
 
 // ---------------------------------------------------------------------------
 // `TCacheList` methods:

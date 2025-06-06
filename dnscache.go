@@ -43,7 +43,7 @@ type (
 	//   - `DNSservers`: List of DNS servers to use, `nil` means use system default.
 	//   - `AllowList`: Path/file name to read the 'allow' patterns from.
 	//   - `DataDir`: Directory to store local allow and deny lists.
-	//   - `CacheSize`: Initial cache size, `0` means use default (`64`).
+	//   - `CacheSize`: Initial cache size, `0` means use default (`512`).
 	//   - `Resolver`: Custom resolver, `nil` means use default.
 	//   - `ExpireInterval`: Optional interval (in minutes) to remove expired cache entries.
 	//   - `MaxRetries`: Maximum number of retries for DNS lookup, `0` means use default (`3`).
@@ -137,7 +137,7 @@ func NewWithOptions(aOptions TResolverOptions) *TResolver {
 		}
 	}
 
-	optCacheSize := aOptions.CacheSize
+	optCacheSize := uint(aOptions.CacheSize)
 	if 0 >= optCacheSize {
 		optCacheSize = cache.DefaultCacheSize
 	}
@@ -163,7 +163,7 @@ func NewWithOptions(aOptions TResolverOptions) *TResolver {
 		abortRefresh: make(chan struct{}),
 		adlist:       adl.New(optDataDir),
 		resolver:     optResolver,
-		TCacheList:   make(cache.TCacheList, optCacheSize),
+		TCacheList:   cache.New(optCacheSize),
 		retries:      optRetries,
 	}
 

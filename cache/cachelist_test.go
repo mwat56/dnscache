@@ -15,31 +15,31 @@ import (
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
-func Test_newCacheList(t *testing.T) {
+func Test_New(t *testing.T) {
 	tests := []struct {
 		name string
 		size uint
-		want *TCacheList
+		want TCacheList
 	}{
 		{
 			name: "zero size",
 			size: 0,
-			want: &TCacheList{},
+			want: TCacheList{},
 		},
 		{
 			name: "positive size",
 			size: 1,
-			want: &TCacheList{},
+			want: TCacheList{},
 		},
 		{
 			name: "default size",
 			size: DefaultCacheSize,
-			want: &TCacheList{},
+			want: TCacheList{},
 		},
 		{
 			name: "large size",
 			size: 1024,
-			want: &TCacheList{},
+			want: TCacheList{},
 		},
 
 		// TODO: Add test cases.
@@ -47,25 +47,15 @@ func Test_newCacheList(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := newCacheList(tc.size)
-			if nil == got {
-				t.Error("newCacheList() = nil, want non-nil")
-				return
-			}
+			got := New(tc.size)
 
-			if nil == tc.want {
-				t.Errorf("newCacheList() = %v, want 'nil'",
-					got)
-				return
-			}
-
-			if !tc.want.Equal(got) {
-				t.Errorf("newCacheList() = %v, want %v",
+			if !tc.want.Equal(&got) {
+				t.Errorf("New() = %v, want %v",
 					got, tc.want)
 			}
 		})
 	}
-} // Test_newCacheList()
+} // Test_New()
 
 func Test_tCacheList_Clone(t *testing.T) {
 	tests := []struct {
@@ -74,7 +64,7 @@ func Test_tCacheList_Clone(t *testing.T) {
 		want *TCacheList
 	}{
 		{
-			name: "clone",
+			name: "01 - clone",
 			cl: &TCacheList{
 				"example.com": &TCacheEntry{
 					ips: TIpList{
@@ -93,12 +83,12 @@ func Test_tCacheList_Clone(t *testing.T) {
 			},
 		},
 		{
-			name: "clone nil",
+			name: "02 - clone nil",
 			cl:   nil,
 			want: nil,
 		},
 		{
-			name: "clone empty",
+			name: "03 - clone empty",
 			cl:   &TCacheList{},
 			want: &TCacheList{},
 		},
@@ -143,7 +133,7 @@ func Test_tCacheList_Delete(t *testing.T) {
 		want *TCacheList
 	}{
 		{
-			name: "delete",
+			name: "01 - delete",
 			cl: &TCacheList{
 				h1: &TCacheEntry{
 					ips: tc1,
@@ -153,19 +143,19 @@ func Test_tCacheList_Delete(t *testing.T) {
 			want: &TCacheList{},
 		},
 		{
-			name: "delete nil",
+			name: "02 - delete nil",
 			cl:   nil,
 			host: h1,
 			want: nil,
 		},
 		{
-			name: "delete empty",
+			name: "03 - delete empty",
 			cl:   &TCacheList{},
 			host: h1,
 			want: &TCacheList{},
 		},
 		{
-			name: "delete non-existent",
+			name: "04 - delete non-existent",
 			cl: &TCacheList{
 				h1: &TCacheEntry{
 					ips: tc1,
@@ -223,7 +213,7 @@ func Test_tCacheList_Equal(t *testing.T) {
 		want bool
 	}{
 		{
-			name: "equal",
+			name: "01 - equal",
 			cl: &TCacheList{
 				h1: &TCacheEntry{
 					ips: tc1,
@@ -237,7 +227,7 @@ func Test_tCacheList_Equal(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "not equal",
+			name: "02 - not equal",
 			cl: &TCacheList{
 				h1: &TCacheEntry{
 					ips: tc1,
@@ -251,7 +241,7 @@ func Test_tCacheList_Equal(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "nil cl",
+			name: "03 - nil cl",
 			cl:   nil,
 			ol: &TCacheList{
 				h1: &TCacheEntry{
@@ -261,7 +251,7 @@ func Test_tCacheList_Equal(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "nil ol",
+			name: "04 - nil ol",
 			cl: &TCacheList{
 				h1: &TCacheEntry{
 					ips: tc1,
@@ -271,13 +261,13 @@ func Test_tCacheList_Equal(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "nil cl and ol",
+			name: "05 - nil cl and ol",
 			cl:   nil,
 			ol:   nil,
 			want: true,
 		},
 		{
-			name: "different length",
+			name: "06 - different length",
 			cl: &TCacheList{
 				h1: &TCacheEntry{
 					ips: tc1,
@@ -294,7 +284,7 @@ func Test_tCacheList_Equal(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "different hostnames",
+			name: "07 - different hostnames",
 			cl: &TCacheList{
 				h1: &TCacheEntry{
 					ips: tc1,
@@ -333,20 +323,36 @@ func Test_tCacheList_expireEntries(t *testing.T) {
 		want *TCacheList
 	}{
 		{
-			name: "expire entries",
+			name: "01 - expire entries",
 			cl: &TCacheList{
 				h1: &TCacheEntry{
+					ips: TIpList{
+						net.ParseIP("192.168.1.1"),
+						net.ParseIP("192.168.1.2"),
+					},
 					bestBefore: t1.Add(-time.Hour).Add(time.Minute),
 				},
 				h2: &TCacheEntry{
+					ips: TIpList{
+						net.ParseIP("192.168.1.3"),
+						net.ParseIP("192.168.1.4"),
+					},
 					bestBefore: t1.Add(time.Hour),
 				},
 				h3: &TCacheEntry{
+					ips: TIpList{
+						net.ParseIP("192.168.1.5"),
+						net.ParseIP("192.168.1.6"),
+					},
 					bestBefore: t1.Add(-time.Hour).Add(time.Minute),
 				},
 			},
 			want: &TCacheList{
 				h2: &TCacheEntry{
+					ips: TIpList{
+						net.ParseIP("192.168.1.3"),
+						net.ParseIP("192.168.1.4"),
+					},
 					bestBefore: t1.Add(time.Hour),
 				},
 			},
@@ -461,7 +467,7 @@ func Test_tCacheList_IPs(t *testing.T) {
 		wantOK  bool
 	}{
 		{
-			name: "found",
+			name: "01 - found",
 			cl: &TCacheList{
 				h1: &TCacheEntry{
 					ips: tc1,
@@ -472,7 +478,7 @@ func Test_tCacheList_IPs(t *testing.T) {
 			wantOK:  true,
 		},
 		{
-			name: "not found",
+			name: "02 - not found",
 			cl: &TCacheList{
 				h1: &TCacheEntry{
 					ips: tc1,
@@ -483,7 +489,7 @@ func Test_tCacheList_IPs(t *testing.T) {
 			wantOK:  false,
 		},
 		{
-			name:    "nil cl",
+			name:    "03 - nil cl",
 			cl:      nil,
 			host:    h2,
 			wantIPs: nil,
