@@ -95,15 +95,8 @@ func lookupDNS(aCtx context.Context, aServer, aHostname string) ([]net.IP, error
 		// `Dial` is used to connect to the DNS server
 		Dial: func(aCtx context.Context, aNetType, _ string) (net.Conn, error) {
 			dialer := net.Dialer{
-				Timeout: time.Second * 3,
+				Timeout: time.Second << 2,
 			}
-			// switch aNetType {
-			// case "tcp", "tcp4", "tcp6":
-			// case "udp", "udp4", "udp6":
-			// // case "ip", "ip4", "ip6":
-			// default:
-			// 	return nil, net.UnknownNetworkError(aNetType)
-			// }
 
 			return dialer.DialContext(aCtx, aNetType, aServer+":53")
 		}, // Dial

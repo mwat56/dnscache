@@ -8,7 +8,7 @@ package dnscache
 
 import (
 	"context"
-	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -36,13 +36,16 @@ func Test_getDNSServers(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := getDNSServers()
+
 			if (nil != err) != tc.wantErr {
 				t.Errorf("getDNSServers() error = '%v', wantErr '%v'",
 					err, tc.wantErr)
 				return
 			}
-			if !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("getDNSServers() = %v, want %v", got, tc.want)
+
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("getDNSServers() =\n%q\nwant\n%q",
+					got, tc.want)
 			}
 		})
 	}

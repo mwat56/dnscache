@@ -7,9 +7,11 @@ Copyright © 2025  M.Watermann, 10247 Berlin, Germany
 package dnscache
 
 import (
+	"context"
 	"net"
 	"slices"
 	"testing"
+	"time"
 )
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
@@ -47,8 +49,9 @@ func Test_NewWithOptions(t *testing.T) {
 	}
 
 	tests := []testCase{
+		/* */
 		{
-			name:    "default options",
+			name:    "01 - default options",
 			options: TResolverOptions{},
 			check: func(t *testing.T, r *TResolver) {
 				if nil == r {
@@ -66,7 +69,7 @@ func Test_NewWithOptions(t *testing.T) {
 			},
 		},
 		{
-			name:    "custom DNS servers",
+			name:    "02 - custom DNS servers",
 			options: TResolverOptions{DNSservers: []string{"8.8.8.8", "8.8.4.4"}},
 			check: func(t *testing.T, r *TResolver) {
 				if nil == r {
@@ -84,7 +87,7 @@ func Test_NewWithOptions(t *testing.T) {
 			},
 		},
 		{
-			name:    "invalid DNS servers",
+			name:    "03 - invalid DNS servers",
 			options: TResolverOptions{DNSservers: []string{"234.567.890.1"}},
 			check: func(t *testing.T, r *TResolver) {
 				if nil == r {
@@ -95,14 +98,10 @@ func Test_NewWithOptions(t *testing.T) {
 					t.Error("Expected non-nil server list with invalid DNS servers")
 					return
 				}
-				// if !slices.Equal(r.dnsServers, []string{"8.8.8.8", "8.8.4.4"}) {
-				// 	t.Errorf("Expected DNS servers to be ['8.8.8.8', '8.8.4.4'], got\n%v",
-				// 		r.dnsServers)
-				// }
 			},
 		},
 		{
-			name:    "custom refresh interval",
+			name:    "04 - custom refresh interval",
 			options: TResolverOptions{RefreshInterval: 1},
 			check: func(t *testing.T, r *TResolver) {
 				if nil == r {
@@ -116,7 +115,7 @@ func Test_NewWithOptions(t *testing.T) {
 			},
 		},
 		{
-			name:    "custom cache size",
+			name:    "05 - custom cache size",
 			options: TResolverOptions{CacheSize: 128},
 			check: func(t *testing.T, r *TResolver) {
 				if nil == r {
@@ -143,7 +142,7 @@ func Test_NewWithOptions(t *testing.T) {
 			},
 		},
 		{
-			name:    "custom resolver",
+			name:    "06 - custom resolver",
 			options: TResolverOptions{Resolver: customResolver},
 			check: func(t *testing.T, r *TResolver) {
 				if nil == r {
@@ -156,7 +155,7 @@ func Test_NewWithOptions(t *testing.T) {
 			},
 		},
 		{
-			name:    "custom max retries",
+			name:    "07 - custom max retries",
 			options: TResolverOptions{MaxRetries: 5},
 			check: func(t *testing.T, r *TResolver) {
 				if nil == r {
@@ -169,6 +168,21 @@ func Test_NewWithOptions(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:    "08 - custom TTL",
+			options: TResolverOptions{TTL: 10},
+			check: func(t *testing.T, r *TResolver) {
+				if nil == r {
+					t.Error("Expected non-nil resolver with custom TTL")
+					return
+				}
+				if time.Minute*10 != r.ttl {
+					t.Errorf("Expected TTL to be 10 minutes, got %v",
+						r.ttl)
+				}
+			},
+		},
+		/* */
 	}
 
 	for _, tc := range tests {
@@ -387,6 +401,99 @@ func Test_TResolver_FetchRandomString(t *testing.T) {
 		})
 	}
 } // Test_TResolver_FetchRandomString()
+
+func Test_TResolver_lookup(t *testing.T) {
+	tests := []struct {
+		name     string
+		resolver *TResolver
+		hostname string
+		setup    func(*TResolver)
+		wantIPs  tIpList
+		wantErr  bool
+	}{
+		/* */
+		{
+			name:     "01 - lookup cached",
+			resolver: New(0),
+			hostname: "cached.example.com",
+			setup: func(r *TResolver) {
+				// The cache isn't actually used in this execution path.
+				r.tCacheList.setEntry("cached.example.com", tIpList{
+					net.ParseIP("192.168.1.1"),
+				}, defTTL)
+			},
+			wantIPs: nil,
+			wantErr: true,
+		},
+		{
+			name:     "02 - lookup uncached (lookup)",
+			resolver: New(0),
+			hostname: "dnscache.ggl.io",
+			setup:    func(r *TResolver) {},
+			wantIPs: tIpList{
+				net.ParseIP("3.33.165.172"),
+				net.ParseIP("15.197.228.149"),
+			},
+			wantErr: false,
+		},
+		{
+			name:     "03 - lookup invalid hostname",
+			resolver: New(0),
+			hostname: "invalid.end.of.universe",
+			setup:    func(r *TResolver) {},
+			wantIPs:  nil,
+			wantErr:  true,
+		},
+		/* */
+		{
+			name:     "04 - lookup with DNS servers",
+			resolver: New(0),
+			hostname: "dnscache.ggl.io",
+			setup: func(r *TResolver) {
+				r.dnsServers = []string{"8.8.8.8", "8.8.4.4"}
+			},
+			wantIPs: tIpList{
+				net.ParseIP("3.33.165.172"),
+				net.ParseIP("15.197.228.149"),
+			},
+			wantErr: false,
+		},
+		/* */
+		// TODO: Add test cases.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.setup(tc.resolver)
+			gotIPs, err := tc.resolver.lookup(context.TODO(), tc.hostname)
+
+			if (err != nil) != tc.wantErr {
+				t.Errorf("TResolver.lookup() error = '%v', wantErr '%v'",
+					err, tc.wantErr)
+				return
+			}
+			if nil == gotIPs {
+				if nil != tc.wantIPs {
+					t.Error("TResolver.lookup() = nil, want non-nil")
+				}
+				return
+			}
+			if nil == tc.wantIPs {
+				t.Errorf("TResolver.lookup() = %v, want 'nil'",
+					gotIPs)
+				return
+			}
+
+			if !slices.EqualFunc(gotIPs, tc.wantIPs,
+				func(ip1, ip2 net.IP) bool {
+					return ip1.Equal(ip2)
+				}) {
+				t.Errorf("TResolver.lookup() =\n%v\nwant\n%v",
+					gotIPs, tc.wantIPs)
+			}
+		})
+	}
+} // Test_TResolver_lookup()
 
 func Test_TResolver_Refresh(t *testing.T) {
 	type testCase struct {

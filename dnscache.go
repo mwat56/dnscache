@@ -7,14 +7,20 @@ Copyright © 2025  M.Watermann, 10247 Berlin, Germany
 package dnscache
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log"
 	"math/rand"
 	"net"
+	"os"
 	"runtime"
 	"slices"
+	"strings"
 	"sync"
 	"time"
+
+	adl "github.com/mwat56/dnscache/internal/adlist"
 )
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
@@ -38,7 +44,10 @@ type (
 	//
 	// This are the public fields to configure a new `TResolver` instance:
 	//
+	//   - `BlockLists`: List of URLs to download blocklists from.
 	//   - `DNSservers`: List of DNS servers to use, `nil` means use system default.
+	//   - `AllowList`: Path/file name to read the 'allow' patterns from.
+	//   - `DataDir`: Directory to store local allow and deny lists.
 	//   - `CacheSize`: Initial cache size, `0` means use default (`64`).
 	//   - `Resolver`: Custom resolver, `nil` means use default.
 	//   - `ExpireInterval`: Optional interval (in minutes) to remove expired cache entries.
@@ -46,7 +55,10 @@ type (
 	//   - `RefreshInterval`: Optional interval (in minutes) to refresh the cache.
 	//   - `TTL`: Optional time to live (in minutes) for cache entries.
 	TResolverOptions struct {
+		BlockLists      []string
 		DNSservers      []string
+		AllowList       string
+		DataDir         string
 		CacheSize       int
 		Resolver        *net.Resolver
 		ExpireInterval  uint8
@@ -64,6 +76,7 @@ type (
 		dnsServers   []string
 		abortExpire  chan struct{} // signal to abort `autoExpire()`
 		abortRefresh chan struct{} // signal to abort `autoRefresh()`
+		adlist       *adl.TADlist  // allow/deny list to check before DNS
 		resolver     *net.Resolver // DNS resolver to use
 		tCacheList                 //list of DNS cache entries
 		ttl          time.Duration // TTL for cache entries
@@ -134,6 +147,11 @@ func NewWithOptions(aOptions TResolverOptions) *TResolver {
 		optCacheSize = defCacheSize
 	}
 
+	optDataDir := strings.TrimSpace(aOptions.DataDir)
+	if 0 == len(optDataDir) {
+		optDataDir = os.TempDir()
+	}
+
 	optResolver := aOptions.Resolver
 	if nil == optResolver {
 		optResolver = net.DefaultResolver
@@ -148,6 +166,7 @@ func NewWithOptions(aOptions TResolverOptions) *TResolver {
 		dnsServers:   optServers,
 		abortExpire:  make(chan struct{}),
 		abortRefresh: make(chan struct{}),
+		adlist:       adl.New(optDataDir),
 		resolver:     optResolver,
 		tCacheList:   make(tCacheList, optCacheSize),
 		retries:      optRetries,
@@ -173,6 +192,23 @@ func NewWithOptions(aOptions TResolverOptions) *TResolver {
 		// Start the auto-expire goroutine.
 		go result.tCacheList.autoExpire(time.Minute*time.Duration(optExpireInterval), result.abortExpire)
 		runtime.Gosched() // yield to the new goroutine
+	}
+
+	// Load the allow list
+	optAllowList := strings.TrimSpace(aOptions.AllowList)
+	if 0 < len(optAllowList) {
+		if err := result.LoadAllowlist(optAllowList); nil != err {
+			// Log the error, but don't fail because of that
+			log.Printf("Failed to load allowlist: %v", err)
+		}
+	}
+
+	// Load the deny list
+	if 0 < len(aOptions.BlockLists) {
+		if err := result.LoadBlocklists(aOptions.BlockLists); nil != err {
+			// Log the error, but don't fail because of that
+			log.Printf("Failed to load blocklists: %v", err)
+		}
 	}
 
 	return result
@@ -213,6 +249,13 @@ func (r *TResolver) autoRefresh(aRate time.Duration, aAbort chan struct{}) {
 //   - `[]net.IP`: List of IP addresses for the given hostname.
 //   - `error`: `nil` if the hostname was resolved successfully, the error otherwise.
 func (r *TResolver) Fetch(aHostname string) ([]net.IP, error) {
+	if adl.ADdeny == r.adlist.Match(context.Background(), aHostname) {
+		incMetricsFields(&gMetrics.Lookups, &gMetrics.Hits)
+
+		return append([]net.IP{}, net.IPv4zero), nil
+	}
+
+	// Check the local cache
 	r.RLock()
 	ips, ok := r.tCacheList.ips(aHostname)
 	r.RUnlock()
@@ -225,15 +268,14 @@ func (r *TResolver) Fetch(aHostname string) ([]net.IP, error) {
 	}
 	incMetricsFields(&gMetrics.Misses)
 
-	// Use a context with timeout for the entire refresh operation
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute<<2)
+	// Use a context with timeout for the entire lookup operation
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute<<1)
 	defer cancel()
-	ips, err := r.Lookup(ctx, aHostname)
+	ips, err := r.LookupWithTimeout(ctx, aHostname)
 	if nil != err {
 		return nil, err
 	}
 
-	// slow path: we need to resolve this hostname
 	return ips, err
 } // Fetch()
 
@@ -321,6 +363,34 @@ func (r *TResolver) FetchRandomString(aHostname string) (string, error) {
 	return ip.String(), nil
 } // FetchRandomString()
 
+// `LoadAllowlist()` loads the allowlist from the given file.
+//
+// Parameters:
+//   - `aFilename`: The path/file name to read the 'allow' patterns from.
+//
+// Returns:
+//   - `error`: An error in case of problems, or `nil` otherwise.
+func (r *TResolver) LoadAllowlist(aFilename string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second<<2)
+	defer cancel()
+
+	return r.adlist.LoadAllow(ctx, aFilename)
+} // LoadAllowlist()
+
+// `LoadBlocklists()` loads the blocklists from the given URLs.
+//
+// Parameters:
+//   - `aURLs`: The URLs to download the blocklists from.
+//
+// Returns:
+//   - `error`: An error in case of problems, or `nil` otherwise.
+func (r *TResolver) LoadBlocklists(aURLs []string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second<<2)
+	defer cancel()
+
+	return r.adlist.LoadDeny(ctx, aURLs)
+} // LoadBlocklists()
+
 // `lookup()` resolves `aHostname` with the given context.
 //
 // Parameters:
@@ -328,32 +398,73 @@ func (r *TResolver) FetchRandomString(aHostname string) (string, error) {
 //   - `aHostname`: The hostname to resolve.
 //
 // Returns:
-//   - `rIPs`: List of IP addresses for the given hostname.
-//   - `rErr`: `nil` if the hostname was resolved successfully, the error otherwise.
-func (r *TResolver) lookup(aCtx context.Context, aHostname string) (rIPs []net.IP, rErr error) {
+//   - `tIpList`: List of IP addresses for the given hostname.
+//   - `error`: `nil` if the hostname was resolved successfully, the error otherwise.
+func (r *TResolver) lookup(aCtx context.Context, aHostname string) (tIpList, error) {
 	if nil != r.dnsServers {
+		// Resolve the hostname with multiple DNS servers in parallel
+		results := make(chan tIpList, len(r.dnsServers))
+		// defer close(results)
+
+		// Create child context with cancellation control
+		ctx, cancel := context.WithCancel(aCtx)
+		defer cancel() // Always release resources
+
+		var wg sync.WaitGroup
 		for _, server := range r.dnsServers {
-			if rIPs, rErr = lookupDNS(aCtx, server, aHostname); nil == rErr {
-				return // lookup succeeded
-			}
+			wg.Add(1)
+			go func(aServer, aHostname string) {
+				defer wg.Done()
+
+				if ips, err := lookupDNS(ctx, aServer, aHostname); nil == err {
+					if 0 < len(ips) {
+						// We have a valid result, hence
+						// cancel all other lookups
+						cancel()
+						results <- ips // lookup succeeded
+					}
+				}
+			}(server, aHostname)
+		}
+		wg.Wait()
+		close(results)
+		if ips, ok := <-results; ok {
+			// sort for consistency
+			slices.SortFunc(ips, func(ip1, ip2 net.IP) int {
+				return bytes.Compare(ip1, ip2)
+			})
+			return ips, nil
 		}
 	}
+	// Reaching this point of execution means that we have no
+	// DNS servers configured, or that all of them failed.
 
-	if rIPs, rErr = r.resolver.LookupIP(aCtx, "ip", aHostname); nil == rErr {
-		return // lookup succeeded
+	ips, err := r.resolver.LookupIP(aCtx, "ip", aHostname)
+	if nil == err {
+		// sort for consistency
+		slices.SortFunc(ips, func(ip1, ip2 net.IP) int {
+			return bytes.Compare(ip1, ip2)
+		})
+
+		return ips, nil // lookup succeeded
 	}
 
 	// Check if it's a "not found" DNS error
 	var dnsErr *net.DNSError
-	if errors.As(rErr, &dnsErr) && dnsErr.IsNotFound {
+	if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
 		// No need to retry for a non-existent host
-		rIPs = nil
+		ips = nil
 	}
 
-	return
+	return ips, err
 } // lookup()
 
-// `Lookup()` resolves a hostname with the given context and caches the result.
+// `LookupWithTimeout()` resolves a hostname with the given context and
+// caches the result.
+//
+// This method is called by `Fetch()` and `Refresh()` internally and not
+// intended for public use because it bypasses both, the allow/deny lists
+// and the internal cache.
 //
 // Parameters:
 //   - `aCtx`: Context for the lookup operation.
@@ -362,7 +473,7 @@ func (r *TResolver) lookup(aCtx context.Context, aHostname string) (rIPs []net.I
 // Returns:
 //   - `[]net.IP`: List of IP addresses for the given hostname.
 //   - `error`: `nil` if the hostname was resolved successfully, the error otherwise.
-func (r *TResolver) Lookup(aCtx context.Context, aHostname string) ([]net.IP, error) {
+func (r *TResolver) LookupWithTimeout(aCtx context.Context, aHostname string) ([]net.IP, error) {
 	var (
 		err error
 		ips []net.IP
@@ -416,7 +527,7 @@ func (r *TResolver) Lookup(aCtx context.Context, aHostname string) ([]net.IP, er
 	r.Unlock()
 
 	return ips, nil
-} // Lookup()
+} // LookupWithTimeout()
 
 // `Metrics()` returns the current metrics data.
 //
@@ -432,7 +543,7 @@ func (r *TResolver) Metrics() (rMetrics *TMetrics) {
 // specified in the `New()` constructor.
 func (r *TResolver) Refresh() {
 	// Use a context with timeout for the entire refresh operation
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*5)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute<<2)
 	defer cancel()
 
 	// Use a rate limiter to avoid overwhelming DNS servers
@@ -453,7 +564,7 @@ func (r *TResolver) Refresh() {
 			return // Context timeout or cancellation
 		case <-limiter.C:
 			// Lookup the hostname:
-			_, err := r.Lookup(ctx, hostname)
+			_, err := r.LookupWithTimeout(ctx, hostname)
 			if nil != err {
 				if errors.As(err, &dnsErr) {
 					if dnsErr.IsNotFound {
@@ -469,6 +580,10 @@ func (r *TResolver) Refresh() {
 			runtime.Gosched() // yield to other goroutines
 		}
 	}
+
+	//
+	//TODO: Reload allow and deny lists
+	//
 } // Refresh()
 
 // `StopExpire()` stops the background expiration goroutine if it's running.
