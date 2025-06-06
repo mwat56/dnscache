@@ -493,7 +493,6 @@ func (n *tNode) match(aCtx context.Context, aPartsList tPartsList) (rOK bool) {
 	var ( // avoid repeated allocations inside the loop
 		child *tNode
 		depth int
-		isEnd bool
 		label string
 		ok    bool
 	)
@@ -503,29 +502,34 @@ func (n *tNode) match(aCtx context.Context, aPartsList tPartsList) (rOK bool) {
 		if nil != aCtx.Err() {
 			return
 		}
-		child, ok = n.tChildren[label]
-		if !ok {
-			// No child with that name, check for wildcard
+
+		// Check for a child with the current label
+		if child, ok = n.tChildren[label]; !ok {
+			// No child with that name, so check for a wildcard
+			// match at the current level
 			if child, ok = n.tChildren["*"]; ok {
-				rOK = (0 != child.terminator) // either end or wildcard bits
+				rOK = (0 != child.terminator)
 			}
-			break
+
+			return
 		}
 
+		// Descend into the child node
 		n = child
-		// First check for a wildcard match at the current level
-		if child, ok = n.tChildren["*"]; ok {
-			rOK = (0 != child.terminator) // either end or wildcard bits
-			break
-		} else {
-			// Remember the last non-wildcard node
-			child = n
+		if depth < len(aPartsList)-1 {
+			if child, ok = n.tChildren["*"]; ok {
+				rOK = (0 != child.terminator)
+
+				return
+			}
 		}
-		isEnd = ((n.terminator & endMask) == endMask)
-		if ((n.terminator & wildMask) == wildMask) ||
-			(len(aPartsList)-1 == depth) && isEnd {
-			rOK = true
-			break
+
+		if len(aPartsList)-1 == depth {
+			// We're at the last label of the pattern,
+			// check for a terminal match
+			rOK = (0 != n.terminator)
+
+			return
 		}
 	}
 

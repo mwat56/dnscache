@@ -814,7 +814,6 @@ func Test_tNode_match(t *testing.T) {
 			parts: tPartsList{"tld", "domain", "*"},
 			want:  false,
 		},
-		/* */
 		{
 			name: "07 - match FQDN against wildcard",
 			node: func() *tNode {
@@ -825,7 +824,6 @@ func Test_tNode_match(t *testing.T) {
 			parts: tPartsList{"tld", "domain", "host"},
 			want:  true,
 		},
-		/* */
 		{
 			name: "08 - match FQDN against wildcard and FQDN",
 			node: func() *tNode {
@@ -859,7 +857,7 @@ func Test_tNode_match(t *testing.T) {
 			}(),
 			parts: tPartsList{"tld", "domain", "host"},
 			want:  true,
-		},
+		}, 
 		{
 			name: "11 - match FQDN against wildcard and FQDN and wildcards and FQDN",
 			node: func() *tNode {
@@ -871,6 +869,19 @@ func Test_tNode_match(t *testing.T) {
 			}(),
 			parts: tPartsList{"tld", "domain", "host"},
 			want:  true,
+		},
+		{
+			name: "12 - match FQDN against wildcard and FQDN and wildcards and FQDN and wildcard",
+			node: func() *tNode {
+				n := newNode()
+				n.add(context.TODO(), tPartsList{"tld", "domain", "*"})
+				n.add(context.TODO(), tPartsList{"tld", "domain", "host", "*"})
+				n.add(context.TODO(), tPartsList{"tld", "other", "sub", "host"})
+				n.add(context.TODO(), tPartsList{"tld", "other", "host", "*"})
+				return n
+			}(),
+			parts: tPartsList{"tld", "other", "host"},
+			want:  false,
 		},
 		/* */
 		// TODO: Add test cases.
@@ -958,7 +969,7 @@ func Test_tNode_merge(t *testing.T) {
 				n := newNode()
 				n.add(context.TODO(), tPartsList{"tld", "domain", "*"})
 				n.add(context.TODO(), tPartsList{"tld", "domain", "www"})
-				n.add(context.TODO(), tPartsList{"tld2",   "*"})
+				n.add(context.TODO(), tPartsList{"tld2", "*"})
 				return n
 			}(),
 			src: func() *tNode {
@@ -972,7 +983,7 @@ func Test_tNode_merge(t *testing.T) {
 				n.add(context.TODO(), tPartsList{"tld", "domain", "*"})
 				n.add(context.TODO(), tPartsList{"tld", "domain", "host"})
 				n.add(context.TODO(), tPartsList{"tld", "domain", "www"})
-				n.add(context.TODO(), tPartsList{"tld2",  "*"})
+				n.add(context.TODO(), tPartsList{"tld2", "*"})
 				n.add(context.TODO(), tPartsList{"tld2", "domain", "www"})
 				return n
 			}(),
