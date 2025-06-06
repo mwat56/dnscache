@@ -29,6 +29,9 @@ import (
 const (
 	// `defExpireInterval` is the default interval at which expired cache entries are removed from the cache.
 	defExpireInterval = uint8(1 << 4) // 16 minutes
+
+	// `defRetries` is the default number of retries for DNS lookups.
+	defRetries = 3
 )
 
 type (
@@ -151,7 +154,7 @@ func NewWithOptions(aOptions TResolverOptions) *TResolver {
 
 	optRetries := aOptions.MaxRetries
 	if 0 == optRetries {
-		optRetries = cache.DefaultRetries
+		optRetries = defRetries
 	}
 
 	result := &TResolver{
@@ -263,12 +266,8 @@ func (r *TResolver) Fetch(aHostname string) ([]net.IP, error) {
 	// Use a context with timeout for the entire lookup operation
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute<<1)
 	defer cancel()
-	ips, err := r.LookupWithTimeout(ctx, aHostname)
-	if nil != err {
-		return nil, err
-	}
 
-	return ips, err
+	return r.LookupWithTimeout(ctx, aHostname)
 } // Fetch()
 
 // `FetchFirst()` returns the first IP address for a given hostname.
@@ -473,7 +472,7 @@ func (r *TResolver) LookupWithTimeout(aCtx context.Context, aHostname string) ([
 
 	// Try to resolve the hostname several times
 	for loop := uint8(0); loop < r.retries; loop++ {
-		// Check if context is done before each attempt
+		// Check if context is terminated before each attempt
 		select {
 		case <-aCtx.Done():
 			// No metrics data to update yet

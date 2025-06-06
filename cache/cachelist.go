@@ -19,9 +19,6 @@ import (
 const (
 	// `DefaultCacheSize` is the default size of the cache list.
 	DefaultCacheSize = 64
-
-	// `DefaultRetries` is the default number of retries for DNS lookups.
-	DefaultRetries = 3
 )
 
 type (
