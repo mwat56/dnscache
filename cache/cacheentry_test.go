@@ -102,7 +102,7 @@ func Test_tCacheEntry_Equal(t *testing.T) {
 		want bool
 	}{
 		{
-			name: "equal",
+			name: "01 - equal",
 			ce: &TCacheEntry{
 				ips: tc1,
 			},
@@ -112,7 +112,7 @@ func Test_tCacheEntry_Equal(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "not equal entries",
+			name: "02 - not equal entries",
 			ce: &TCacheEntry{
 				ips: tc1,
 			},
@@ -122,7 +122,7 @@ func Test_tCacheEntry_Equal(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "not equal lists",
+			name: "03 - not equal lists",
 			ce: &TCacheEntry{
 				ips: tc2,
 			},
@@ -132,25 +132,25 @@ func Test_tCacheEntry_Equal(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "same object",
+			name: "04 - same object",
 			ce:   tc4,
 			oc:   tc4,
 			want: true,
 		},
 		{
-			name: "nil ce",
+			name: "05 - nil ce",
 			ce:   nil,
 			oc:   &TCacheEntry{},
 			want: false,
 		},
 		{
-			name: "nil other",
+			name: "06 - nil other",
 			ce:   &TCacheEntry{},
 			oc:   nil,
 			want: false,
 		},
 		{
-			name: "nil ce and oc",
+			name: "07 - nil ce and oc",
 			ce:   nil,
 			oc:   nil,
 			want: true,
@@ -179,20 +179,28 @@ func Test_tCacheEntry_isExpired(t *testing.T) {
 		{
 			name: "01 - expired",
 			ce: &TCacheEntry{
+				ips: TIpList{
+					net.ParseIP("192.168.1.1"),
+					net.ParseIP("192.168.1.2"),
+				},
 				bestBefore: time.Now().Add(-time.Hour),
 			},
 			wantExpired: true,
 		},
 		{
-			name: "02 - not expired",
+			name: "02 - expired (no IPs)",
 			ce: &TCacheEntry{
 				bestBefore: time.Now().Add(time.Hour),
 			},
-			wantExpired: false,
+			wantExpired: true,
 		},
 		{
 			name: "03 - expired at creation",
 			ce: &TCacheEntry{
+				ips: TIpList{
+					net.ParseIP("192.168.1.1"),
+					net.ParseIP("192.168.1.2"),
+				},
 				bestBefore: time.Now().Add(-time.Minute),
 			},
 			wantExpired: true,
@@ -200,6 +208,10 @@ func Test_tCacheEntry_isExpired(t *testing.T) {
 		{
 			name: "04 - expired just now",
 			ce: &TCacheEntry{
+				ips: TIpList{
+					net.ParseIP("192.168.1.1"),
+					net.ParseIP("192.168.1.2"),
+				},
 				bestBefore: time.Now().Add(-time.Minute),
 			},
 			wantExpired: true,
@@ -207,6 +219,10 @@ func Test_tCacheEntry_isExpired(t *testing.T) {
 		{
 			name: "05 - not expired yet",
 			ce: &TCacheEntry{
+				ips: TIpList{
+					net.ParseIP("192.168.1.1"),
+					net.ParseIP("192.168.1.2"),
+				},
 				bestBefore: time.Now().Add(-time.Minute).Add(time.Hour),
 			},
 			wantExpired: false,
@@ -214,6 +230,10 @@ func Test_tCacheEntry_isExpired(t *testing.T) {
 		{
 			name: "06 - expired in the future",
 			ce: &TCacheEntry{
+				ips: TIpList{
+					net.ParseIP("192.168.1.1"),
+					net.ParseIP("192.168.1.2"),
+				},
 				bestBefore: time.Now().Add(time.Hour).Add(time.Minute),
 			},
 			wantExpired: false,

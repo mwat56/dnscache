@@ -9,7 +9,6 @@ package cache
 import (
 	"fmt"
 	"net"
-	"slices"
 	"strings"
 	"time"
 )
@@ -69,7 +68,8 @@ func (ce *TCacheEntry) clone() *TCacheEntry {
 		bestBefore: ce.bestBefore,
 	}
 	if (nil != ce.ips) && (0 < len(ce.ips)) {
-		result.ips = slices.Clone(ce.ips)
+		result.ips = make(TIpList, len(ce.ips))
+		copy(result.ips, ce.ips)
 	}
 
 	return result
@@ -127,7 +127,7 @@ func (ce *TCacheEntry) First() net.IP {
 // Returns:
 //   - `bool`: `true` if the cache entry is expired, `false` otherwise.
 func (ce *TCacheEntry) isExpired() bool {
-	if nil == ce {
+	if (nil == ce) || (0 == len(ce.ips)) {
 		return true
 	}
 
@@ -177,9 +177,18 @@ func (ce *TCacheEntry) update(aIPs TIpList, aTTL time.Duration) *TCacheEntry {
 	if (nil == ce) || (nil == aIPs) || (0 == len(aIPs)) {
 		return ce
 	}
+	if 0 == aTTL {
+		aTTL = DefaultTTL
+	}
 
 	if !ce.ips.Equal(aIPs) {
-		ce.ips = aIPs
+		if iLen := len(aIPs); 0 < iLen {
+			// Assume ownership of `aIPs`
+			ce.ips = make(TIpList, iLen)
+			copy(ce.ips, aIPs)
+		} else {
+			ce.ips = TIpList{}
+		}
 	}
 
 	// Update expiration time:
