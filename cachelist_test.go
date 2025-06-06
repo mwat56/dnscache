@@ -27,22 +27,31 @@ func Test_tCacheEntry_clone(t *testing.T) {
 		want *tCacheEntry
 	}{
 		{
-			name: "clone",
+			name: "01 - clone",
 			ce: &tCacheEntry{
-				ips:     tc1,
-				created: t1,
-				ttl:     time.Hour,
+				ips:        tc1,
+				bestBefore: t1.Add(defTTL),
 			},
 			want: &tCacheEntry{
-				ips:     tc1,
-				created: t1, //.Add(time.Hour)
-				ttl:     time.Hour,
+				ips:        tc1,
+				bestBefore: t1.Add(defTTL),
 			},
 		},
 		{
-			name: "clone nil",
+			name: "02 - clone nil",
 			ce:   nil,
 			want: nil,
+		},
+		{
+			name: "03 - clone empty",
+			ce: &tCacheEntry{
+				ips:        nil,
+				bestBefore: t1.Add(defTTL),
+			},
+			want: &tCacheEntry{
+				ips:        nil,
+				bestBefore: t1.Add(defTTL),
+			},
 		},
 
 		// TODO: Add test cases.
@@ -166,50 +175,44 @@ func Test_tCacheEntry_isExpired(t *testing.T) {
 		wantExpired bool
 	}{
 		{
-			name: "expired",
+			name: "01 - expired",
 			ce: &tCacheEntry{
-				created: time.Now().Add(-time.Hour),
-				ttl:     time.Minute,
+				bestBefore: time.Now().Add(-time.Hour),
 			},
 			wantExpired: true,
 		},
 		{
-			name: "not expired",
+			name: "02 - not expired",
 			ce: &tCacheEntry{
-				created: time.Now(),
-				ttl:     time.Hour,
+				bestBefore: time.Now().Add(time.Hour),
 			},
 			wantExpired: false,
 		},
 		{
-			name: "expired at creation",
+			name: "03 - expired at creation",
 			ce: &tCacheEntry{
-				created: time.Now(),
-				ttl:     -time.Minute,
+				bestBefore: time.Now().Add(-time.Minute),
 			},
 			wantExpired: true,
 		},
 		{
-			name: "expired just now",
+			name: "04 - expired just now",
 			ce: &tCacheEntry{
-				created: time.Now().Add(-time.Minute),
-				ttl:     time.Minute,
+				bestBefore: time.Now().Add(-time.Minute),
 			},
 			wantExpired: true,
 		},
 		{
-			name: "not expired yet",
+			name: "05 - not expired yet",
 			ce: &tCacheEntry{
-				created: time.Now().Add(-time.Minute),
-				ttl:     time.Hour,
+				bestBefore: time.Now().Add(-time.Minute).Add(time.Hour),
 			},
 			wantExpired: false,
 		},
 		{
-			name: "expired in the future",
+			name: "06 - expired in the future",
 			ce: &tCacheEntry{
-				created: time.Now().Add(time.Hour),
-				ttl:     time.Minute,
+				bestBefore: time.Now().Add(time.Hour).Add(time.Minute),
 			},
 			wantExpired: false,
 		},
@@ -235,9 +238,8 @@ func Test_tCacheEntry_String(t *testing.T) {
 		net.ParseIP("192.168.1.3"),
 	}
 	te1 := &tCacheEntry{
-		created: t1,
-		ips:     tc1,
-		ttl:     time.Hour,
+		ips:        tc1,
+		bestBefore: t1.Add(time.Hour),
 	}
 	tests := []struct {
 		name string
@@ -245,27 +247,24 @@ func Test_tCacheEntry_String(t *testing.T) {
 		want string
 	}{
 		{
-			name: "string representation",
+			name: "01 - string representation",
 			ce:   te1,
-			want: fmt.Sprintf("%s\n%s\n%s",
-				te1.created.Format(defTimeFormat),
-				te1.ips.String(), te1.ttl),
+			want: fmt.Sprintf("%s\n%s",
+				tc1.String(),
+				te1.bestBefore.Format(defTimeFormat)),
 		},
 		{
-			name: "nil ce",
+			name: "02 - nil ce",
 			ce:   nil,
 			want: "",
 		},
 		{
-			name: "empty ce",
+			name: "03 - empty ce",
 			ce: &tCacheEntry{
-				created: t1,
-				ips:     nil,
-				ttl:     te1.ttl,
+				ips:        nil,
+				bestBefore: t1.Add(time.Hour),
 			},
-			want: fmt.Sprintf("%s\n%s",
-				te1.created.Format(defTimeFormat),
-				te1.ttl),
+			want: te1.bestBefore.Format(defTimeFormat),
 		},
 
 		// TODO: Add test cases.
@@ -288,9 +287,8 @@ func Test_tCacheEntry_update(t *testing.T) {
 		newIPs tIpList
 		wantCE *tCacheEntry
 	}{
-		// Don't set or compare the `created` and `ttl` fields.
 		{
-			name: "update with different IPs",
+			name: "01 - update with different IPs",
 			ce: &tCacheEntry{
 				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
@@ -309,7 +307,7 @@ func Test_tCacheEntry_update(t *testing.T) {
 			},
 		},
 		{
-			name: "update with same IPs",
+			name: "02 - update with same IPs",
 			ce: &tCacheEntry{
 				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
@@ -328,7 +326,7 @@ func Test_tCacheEntry_update(t *testing.T) {
 			},
 		},
 		{
-			name: "update with nil IPs",
+			name: "03 - update with nil IPs",
 			ce: &tCacheEntry{
 				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
@@ -344,7 +342,7 @@ func Test_tCacheEntry_update(t *testing.T) {
 			},
 		},
 		{
-			name: "update with empty IPs",
+			name: "04 - update with empty IPs",
 			ce: &tCacheEntry{
 				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
@@ -407,6 +405,7 @@ func Test_newCacheList(t *testing.T) {
 
 		// TODO: Add test cases.
 	}
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got := newCacheList(tc.size)
@@ -697,22 +696,18 @@ func Test_tCacheList_expireEntries(t *testing.T) {
 			name: "expire entries",
 			cl: &tCacheList{
 				h1: &tCacheEntry{
-					created: time.Now().Add(-time.Hour),
-					ttl:     time.Minute,
+					bestBefore: time.Now().Add(-time.Hour).Add(time.Minute),
 				},
 				h2: &tCacheEntry{
-					created: time.Now(),
-					ttl:     time.Hour,
+					bestBefore: time.Now().Add(time.Hour),
 				},
 				h3: &tCacheEntry{
-					created: time.Now().Add(-time.Hour),
-					ttl:     time.Minute,
+					bestBefore: time.Now().Add(-time.Hour).Add(time.Minute),
 				},
 			},
 			want: &tCacheList{
 				h2: &tCacheEntry{
-					created: time.Now(),
-					ttl:     time.Hour,
+					bestBefore: time.Now().Add(time.Hour),
 				},
 			},
 		},
@@ -730,6 +725,85 @@ func Test_tCacheList_expireEntries(t *testing.T) {
 		})
 	}
 } // Test_tCacheList_expireEntries()
+
+func Test_tCacheList_getEntry(t *testing.T) {
+	tests := []struct {
+		name   string
+		cl     *tCacheList
+		host   string
+		want   *tCacheEntry
+		wantOK bool
+	}{
+		{
+			name: "01 - found",
+			cl: &tCacheList{
+				"example.com": &tCacheEntry{
+					ips: tIpList{
+						net.ParseIP("192.168.1.1"),
+						net.ParseIP("192.168.1.2"),
+					},
+				},
+			},
+			host: "example.com",
+			want: &tCacheEntry{
+				ips: tIpList{
+					net.ParseIP("192.168.1.1"),
+					net.ParseIP("192.168.1.2"),
+				},
+			},
+			wantOK: true,
+		},
+		{
+			name: "02 - not found",
+			cl: &tCacheList{
+				"example.com": &tCacheEntry{
+					ips: tIpList{
+						net.ParseIP("192.168.1.1"),
+						net.ParseIP("192.168.1.2"),
+					},
+				},
+			},
+			host:   "example.org",
+			want:   nil,
+			wantOK: false,
+		},
+		{
+			name:   "03 - nil cl",
+			cl:     nil,
+			host:   "example.com",
+			want:   nil,
+			wantOK: false,
+		},
+
+		// TODO: Add test cases.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, gotOK := tc.cl.getEntry(tc.host)
+
+			if nil == got {
+				if nil != tc.want {
+					t.Error("tCacheList.getEntry() got = nil, want non-nil")
+				}
+				return
+			}
+			if nil == tc.want {
+				t.Errorf("tCacheList.getEntry() got = %v, want 'nil'",
+					got)
+				return
+			}
+			if gotOK != tc.wantOK {
+				t.Errorf("tCacheList.getEntry() got1 = %v, want %v",
+					gotOK, tc.wantOK)
+			}
+			if !tc.want.Equal(got) {
+				t.Errorf("tCacheList.getEntry() got = %v, want %v",
+					got, tc.want)
+			}
+		})
+	}
+} // Test_tCacheList_getEntry()
 
 func Test_tCacheList_ips(t *testing.T) {
 	h1 := "example.com"
@@ -821,7 +895,7 @@ func Test_tCacheList_setEntry(t *testing.T) {
 	}{
 		/* */
 		{
-			name: "set new entry",
+			name: "01 - set new entry",
 			cl:   &tCacheList{},
 			args: tArgs{
 				aHostname: h1,
@@ -829,20 +903,17 @@ func Test_tCacheList_setEntry(t *testing.T) {
 			},
 			want: &tCacheList{
 				h1: &tCacheEntry{
-					created: t1,
-					ttl:     defTTL,
-					ips:     tc1,
+					ips:        tc1,
+					bestBefore: t1.Add(defTTL),
 				},
 			},
 		},
-		/* */
 		{
-			name: "update existing entry",
+			name: "02 - update existing entry",
 			cl: &tCacheList{
 				h1: &tCacheEntry{
-					created: t1,
-					ttl:     defTTL,
-					ips:     tc1,
+					ips:        tc1,
+					bestBefore: t1.Add(defTTL),
 				},
 			},
 			args: tArgs{
@@ -851,15 +922,13 @@ func Test_tCacheList_setEntry(t *testing.T) {
 			},
 			want: &tCacheList{
 				h1: &tCacheEntry{
-					created: t1,
-					ttl:     defTTL,
-					ips:     tc2,
+					ips:        tc2,
+					bestBefore: t1.Add(defTTL),
 				},
 			},
 		},
-		/* */
 		{
-			name: "set nil IPs",
+			name: "03 - set nil IPs",
 			cl: &tCacheList{
 				h1: &tCacheEntry{
 					ips: tc1,
@@ -876,7 +945,7 @@ func Test_tCacheList_setEntry(t *testing.T) {
 			},
 		},
 		{
-			name: "set empty IPs",
+			name: "04 - set empty IPs",
 			cl: &tCacheList{
 				h1: &tCacheEntry{
 					ips: tc1,
@@ -893,7 +962,7 @@ func Test_tCacheList_setEntry(t *testing.T) {
 			},
 		},
 		{
-			name: "set nil cache list",
+			name: "05 - set nil cache list",
 			cl:   nil,
 			args: tArgs{
 				aHostname: h1,
@@ -933,24 +1002,24 @@ func Test_tCacheList_String(t *testing.T) {
 		want string
 	}{
 		{
-			name: "nil cache list",
+			name: "00 - nil cache list",
 			cl:   nil,
 			want: "",
 		},
 		{
-			name: "empty cache list",
+			name: "01 - empty cache list",
 			cl:   &tCacheList{},
 			want: "",
 		},
 		{
-			name: "one entry",
+			name: "02 - one entry",
 			cl: &tCacheList{
 				h1: &tCacheEntry{
 					ips: tc1,
 				},
 			},
-			want: fmt.Sprintf("%s: %s\n%s\n0s\n",
-				h1, t2.Format(defTimeFormat), tc1.String()),
+			want: fmt.Sprintf("%s: %s\n%s\n",
+				h1, tc1.String(), t2.Format(defTimeFormat)),
 		},
 		// TODO: Add test cases.
 	}

@@ -20,7 +20,7 @@ import (
 
 const (
 	// `defTimeFormat` is the default time format for the cache entries'
-	// string representation of the `created` field.
+	// string representation of the `bestBefore` field.
 	defTimeFormat = "2006-01-02 15:04:05.999999999"
 )
 
@@ -30,9 +30,8 @@ type (
 
 	// `tCacheEntry` is a DNS cache entry.
 	tCacheEntry struct {
-		ips     tIpList       // IP addresses for this entry
-		created time.Time     // time of creation
-		ttl     time.Duration // time to live
+		ips        tIpList   // IP addresses for this entry
+		bestBefore time.Time // time after which the entry is not valid
 		// reuse   uint32         // number of reuses
 	}
 
@@ -112,8 +111,7 @@ func newCacheEntry(aTTL time.Duration) *tCacheEntry {
 	}
 
 	return &tCacheEntry{
-		created: time.Now(),
-		ttl:     aTTL,
+		bestBefore: time.Now().Add(aTTL),
 	}
 } // newCacheEntry()
 
@@ -130,8 +128,7 @@ func (ce *tCacheEntry) clone() *tCacheEntry {
 	}
 
 	result := &tCacheEntry{
-		created: ce.created,
-		ttl:     ce.ttl,
+		bestBefore: ce.bestBefore,
 	}
 	if (nil != ce.ips) && (0 < len(ce.ips)) {
 		result.ips = slices.Clone(ce.ips)
@@ -142,7 +139,7 @@ func (ce *tCacheEntry) clone() *tCacheEntry {
 
 // `Equal()` checks whether the cache entry is equal to the given one.
 //
-// Note: The `created` and `ttl` fields are not compared.
+// Note: The `bestBefore` field is not compared.
 //
 // Parameters:
 //   - `aEntry`: Cache entry to compare with.
@@ -162,17 +159,14 @@ func (ce *tCacheEntry) Equal(aEntry *tCacheEntry) bool {
 	if nil == ce.ips {
 		return (nil == aEntry.ips)
 	}
-	if ce.ttl != aEntry.ttl {
-		return false
-	}
 	if nil == aEntry.ips {
-		return (nil == ce.ips)
+		return false
 	}
 	if len(ce.ips) != len(aEntry.ips) {
 		return false
 	}
 
-	// Do NOT compare the `created` fields because even nanoseconds
+	// Do NOT compare the `bestBefore` field because even nanoseconds
 	// make a differences.
 
 	return ce.ips.Equal(aEntry.ips)
@@ -183,7 +177,11 @@ func (ce *tCacheEntry) Equal(aEntry *tCacheEntry) bool {
 // Returns:
 //   - `bool`: `true` if the cache entry is expired, `false` otherwise.
 func (ce *tCacheEntry) isExpired() bool {
-	return ce.created.Add(ce.ttl).Before(time.Now())
+	if nil == ce {
+		return true
+	}
+
+	return ce.bestBefore.Before(time.Now())
 } // isExpired()
 
 // `String()` implements the `fmt.Stringer` interface for the cache entry.
@@ -196,13 +194,11 @@ func (ce *tCacheEntry) String() string {
 	}
 	var builder strings.Builder
 
-	fmt.Fprint(&builder, ce.created.Format(defTimeFormat))
-	fmt.Fprint(&builder, "\n")
 	if 0 < len(ce.ips) {
 		fmt.Fprint(&builder, ce.ips.String())
 		fmt.Fprint(&builder, "\n")
 	}
-	fmt.Fprint(&builder, ce.ttl.String())
+	fmt.Fprint(&builder, ce.bestBefore.Format(defTimeFormat))
 
 	return builder.String()
 } // String()
@@ -220,15 +216,12 @@ func (ce *tCacheEntry) update(aIPs tIpList, aTTL time.Duration) *tCacheEntry {
 		return ce
 	}
 
-	if ce.ips.Equal(aIPs) {
-		ce.ttl = aTTL
-		// IPs are the same, no need to update
-		return ce
+	if !ce.ips.Equal(aIPs) {
+		ce.ips = aIPs
 	}
 
-	ce.ips = aIPs
-	ce.created = time.Now()
-	ce.ttl = aTTL
+	// Update expiration time:
+	ce.bestBefore = time.Now().Add(aTTL)
 
 	return ce
 } // update()
@@ -353,8 +346,12 @@ func (cl *tCacheList) Equal(aList *tCacheList) bool {
 
 // `expireEntries()` removes all expired cache entries.
 //
-// This method is called automatically by the `autoRemove()` method.
+// This method is called automatically by the `autoExpire()` method.
 func (cl *tCacheList) expireEntries() {
+	if nil == cl {
+		return
+	}
+
 	clone := maps.Clone(*cl)
 	for hostname, ce := range clone {
 		if ce.isExpired() {
@@ -373,7 +370,7 @@ func (cl *tCacheList) expireEntries() {
 //   - `*tCacheEntry`: The cache entry for the given hostname.
 //   - `bool`: `true` if the hostname was found in the cache, `false` otherwise.
 func (cl *tCacheList) getEntry(aHostname string) (*tCacheEntry, bool) {
-	if (nil == cl) || (0 == len(*cl)) {
+	if nil == cl {
 		return nil, false
 	}
 
