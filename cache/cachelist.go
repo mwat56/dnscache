@@ -4,14 +4,12 @@ Copyright © 2025  M.Watermann, 10247 Berlin, Germany
 	    All rights reserved
 	EMail : <support@mwat.de>
 */
-package dnscache
+package cache
 
 import (
 	"fmt"
 	"maps"
-	"net"
 	"runtime"
-	"slices"
 	"strings"
 	"time"
 )
@@ -19,215 +17,21 @@ import (
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
 const (
-	// `defTimeFormat` is the default time format for the cache entries'
-	// string representation of the `bestBefore` field.
-	defTimeFormat = "2006-01-02 15:04:05.999999999"
+	// `DefaultCacheSize` is the default size of the cache list.
+	DefaultCacheSize = 64
+
+	// `DefaultRetries` is the default number of retries for DNS lookups.
+	DefaultRetries = 3
 )
 
 type (
-	// `tIpList` is a list of IP addresses.
-	tIpList []net.IP
-
-	// `tCacheEntry` is a DNS cache entry.
-	tCacheEntry struct {
-		ips        tIpList   // IP addresses for this entry
-		bestBefore time.Time // time after which the entry is not valid
-		// reuse   uint32         // number of reuses
-	}
-
-	// `tCacheList` is a map of DNS cache entries.
-	tCacheList map[string]*tCacheEntry
+	// `TCacheList` is a map of DNS cache entries
+	// indexed by the hostname.
+	TCacheList map[string]*TCacheEntry
 )
 
 // ---------------------------------------------------------------------------
-// `tIpList` methods:
-
-// `Equal()` checks whether the IP list is equal to the given one.
-//
-// Parameters:
-//   - `aList`: List to compare with.
-//
-// Returns:
-//   - `bool`: `true` if the lists are equal, `false` otherwise.
-func (il tIpList) Equal(aList tIpList) bool {
-	if nil == il {
-		return nil == aList
-	}
-	if nil == aList {
-		return false
-	}
-	if len(il) != len(aList) {
-		return false
-	}
-
-	return slices.EqualFunc(il, aList, func(ip1, ip2 net.IP) bool {
-		return ip1.Equal(ip2)
-	})
-} // Equal()
-
-// `String()` implements the `fmt.Stringer` interface for a string
-// representation of the IP list.
-//
-// Returns:
-//   - `string`: String representation of the IP list.
-func (il *tIpList) String() string {
-	if nil == il {
-		return ""
-	}
-	lLen := len(*il)
-	if 0 == lLen {
-		return ""
-	}
-	if 1 == lLen {
-		return (*il)[0].String()
-	}
-
-	var builder strings.Builder
-	for i := range lLen {
-		if nil != (*il)[i] {
-			fmt.Fprint(&builder, (*il)[i].String())
-			if i < lLen-1 {
-				fmt.Fprintf(&builder, " - ")
-			}
-		}
-	}
-
-	return builder.String()
-} // String()
-
-// ---------------------------------------------------------------------------
-// `tCacheEntry` constructor:
-
-// `newCacheEntry()` returns a new cache entry with the given TTL.
-//
-// Parameters:
-//   - `aTTL`: Time to live for the cache entry.
-//
-// Returns:
-//   - `*tCacheEntry`: A new cache entry.
-func newCacheEntry(aTTL time.Duration) *tCacheEntry {
-	if 0 == aTTL {
-		aTTL = defTTL
-	}
-
-	return &tCacheEntry{
-		bestBefore: time.Now().Add(aTTL),
-	}
-} // newCacheEntry()
-
-// ---------------------------------------------------------------------------
-// `tCacheEntry` methods:
-
-// `clone()` returns a deep copy of the cache entry.
-//
-// Returns:
-//   - `*tCacheEntry`: A deep copy of the cache entry.
-func (ce *tCacheEntry) clone() *tCacheEntry {
-	if nil == ce {
-		return nil
-	}
-
-	result := &tCacheEntry{
-		bestBefore: ce.bestBefore,
-	}
-	if (nil != ce.ips) && (0 < len(ce.ips)) {
-		result.ips = slices.Clone(ce.ips)
-	}
-
-	return result
-} // clone()
-
-// `Equal()` checks whether the cache entry is equal to the given one.
-//
-// Note: The `bestBefore` field is not compared.
-//
-// Parameters:
-//   - `aEntry`: Cache entry to compare with.
-//
-// Returns:
-//   - `bool`: `true` if the cache entry is equal to the given one, `false` otherwise.
-func (ce *tCacheEntry) Equal(aEntry *tCacheEntry) bool {
-	if nil == ce {
-		return (nil == aEntry)
-	}
-	if nil == aEntry {
-		return false
-	}
-	if ce == aEntry {
-		return true
-	}
-	if nil == ce.ips {
-		return (nil == aEntry.ips)
-	}
-	if nil == aEntry.ips {
-		return false
-	}
-	if len(ce.ips) != len(aEntry.ips) {
-		return false
-	}
-
-	// Do NOT compare the `bestBefore` field because even nanoseconds
-	// make a differences.
-
-	return ce.ips.Equal(aEntry.ips)
-} // Equal()
-
-// `isExpired()` returns `true` if the cache entry is expired.
-//
-// Returns:
-//   - `bool`: `true` if the cache entry is expired, `false` otherwise.
-func (ce *tCacheEntry) isExpired() bool {
-	if nil == ce {
-		return true
-	}
-
-	return ce.bestBefore.Before(time.Now())
-} // isExpired()
-
-// `String()` implements the `fmt.Stringer` interface for the cache entry.
-//
-// Returns:
-//   - `string`: String representation of the cache entry.
-func (ce *tCacheEntry) String() string {
-	if nil == ce {
-		return ""
-	}
-	var builder strings.Builder
-
-	if 0 < len(ce.ips) {
-		fmt.Fprint(&builder, ce.ips.String())
-		fmt.Fprint(&builder, "\n")
-	}
-	fmt.Fprint(&builder, ce.bestBefore.Format(defTimeFormat))
-
-	return builder.String()
-} // String()
-
-// `update()` updates the cache entry with the given IP addresses.
-//
-// Parameters:
-//   - `aIPs`: List of IP addresses to update the cache entry with.
-//   - `aTTL`: Time to live for the cache entry.
-//
-// Returns:
-//   - `*tCacheEntry`: The updated cache entry.
-func (ce *tCacheEntry) update(aIPs tIpList, aTTL time.Duration) *tCacheEntry {
-	if (nil == ce) || (nil == aIPs) || (0 == len(aIPs)) {
-		return ce
-	}
-
-	if !ce.ips.Equal(aIPs) {
-		ce.ips = aIPs
-	}
-
-	// Update expiration time:
-	ce.bestBefore = time.Now().Add(aTTL)
-
-	return ce
-} // update()
-
-// ---------------------------------------------------------------------------
-// `tCacheList` constructor:
+// `TCacheList` constructor:
 
 // `newCacheList()` returns a new TTL cache list.
 //
@@ -237,26 +41,26 @@ func (ce *tCacheEntry) update(aIPs tIpList, aTTL time.Duration) *tCacheEntry {
 //   - `aSize`: Initial size of the cache list.
 //
 // Returns:
-//   - `*tCacheList`: A new TTL cache list.
-func newCacheList(aSize uint) *tCacheList {
+//   - `*TCacheList`: A new TTL cache list.
+func newCacheList(aSize uint) *TCacheList {
 	if 0 == aSize {
-		aSize = defCacheSize
+		aSize = DefaultCacheSize
 	}
 
-	result := make(tCacheList, aSize)
+	result := make(TCacheList, aSize)
 
 	return &result
 } // newCacheList()
 
 // ---------------------------------------------------------------------------
-// `tCacheList` methods:
+// `TCacheList` methods:
 
-// `autoExpire()` removes expired cache entries at a given interval.
+// `AutoExpire()` removes expired cache entries at a given interval.
 //
 // Parameters:
 //   - `aRate`: Time interval to refresh the cache.
 //   - `aAbort`: Channel to receive a signal to abort.
-func (cl *tCacheList) autoExpire(aRate time.Duration, aAbort chan struct{}) {
+func (cl *TCacheList) AutoExpire(aRate time.Duration, aAbort chan struct{}) {
 	ticker := time.NewTicker(aRate)
 	defer ticker.Stop()
 
@@ -272,33 +76,33 @@ func (cl *tCacheList) autoExpire(aRate time.Duration, aAbort chan struct{}) {
 			runtime.Gosched() // yield to other goroutines
 		}
 	}
-} // autoExpire()
+} // AutoExpire()
 
-// `clone()` returns a deep copy of the cache list.
+// `Clone()` returns a deep copy of the cache list.
 //
 // Returns:
-//   - `*tCacheList`: A deep copy of the cache list.
-func (cl *tCacheList) clone() *tCacheList {
+//   - `*TCacheList`: A deep copy of the cache list.
+func (cl *TCacheList) Clone() *TCacheList {
 	if nil == cl {
 		return nil
 	}
 
-	result := make(tCacheList, len(*cl))
+	result := make(TCacheList, len(*cl))
 	for host, ce := range *cl {
 		result[host] = ce.clone()
 	}
 
 	return &result
-} // clone()
+} // Clone()
 
-// `delete()` removes the cache entry for the given hostname.
+// `Delete()` removes the cache entry for the given hostname.
 //
 // Parameters:
 //   - `aHostname`: The hostname to remove the cache entry for.
 //
 // Returns:
-//   - `*tCacheList`: The updated cache list.
-func (cl *tCacheList) delete(aHostname string) *tCacheList {
+//   - `*TCacheList`: The updated cache list.
+func (cl *TCacheList) Delete(aHostname string) *TCacheList {
 	if nil == cl {
 		return nil
 	}
@@ -306,7 +110,7 @@ func (cl *tCacheList) delete(aHostname string) *tCacheList {
 	delete(*cl, aHostname)
 
 	return cl
-} // delete()
+} // Delete()
 
 // `Equal()` checks whether the cache list is equal to the given one.
 //
@@ -315,7 +119,7 @@ func (cl *tCacheList) delete(aHostname string) *tCacheList {
 //
 // Returns:
 //   - `bool`: `true` if the cache list is equal to the given one, `false` otherwise.
-func (cl *tCacheList) Equal(aList *tCacheList) bool {
+func (cl *TCacheList) Equal(aList *TCacheList) bool {
 	if nil == cl {
 		return nil == aList
 	}
@@ -326,7 +130,7 @@ func (cl *tCacheList) Equal(aList *tCacheList) bool {
 		return false
 	}
 	var (
-		otherE *tCacheEntry
+		otherE *TCacheEntry
 		ok     bool
 	)
 
@@ -346,8 +150,8 @@ func (cl *tCacheList) Equal(aList *tCacheList) bool {
 
 // `expireEntries()` removes all expired cache entries.
 //
-// This method is called automatically by the `autoExpire()` method.
-func (cl *tCacheList) expireEntries() {
+// This method is called automatically by the `AutoExpire()` method.
+func (cl *TCacheList) expireEntries() {
 	if nil == cl {
 		return
 	}
@@ -361,7 +165,7 @@ func (cl *tCacheList) expireEntries() {
 	clone = nil
 } // expireEntries()
 
-// `getEntry()` returns the cache entry for the given hostname.
+// `GetEntry()` returns the cache entry for the given hostname.
 //
 // Parameters:
 //   - `aHostname`: The hostname to get the cache entry for.
@@ -369,7 +173,7 @@ func (cl *tCacheList) expireEntries() {
 // Returns:
 //   - `*tCacheEntry`: The cache entry for the given hostname.
 //   - `bool`: `true` if the hostname was found in the cache, `false` otherwise.
-func (cl *tCacheList) getEntry(aHostname string) (*tCacheEntry, bool) {
+func (cl *TCacheList) GetEntry(aHostname string) (*TCacheEntry, bool) {
 	if nil == cl {
 		return nil, false
 	}
@@ -379,17 +183,17 @@ func (cl *tCacheList) getEntry(aHostname string) (*tCacheEntry, bool) {
 	}
 
 	return nil, false
-} // getEntry()
+} // GetEntry()
 
-// `ips()` returns the IP addresses for the given hostname.
+// `IPs()` returns the IP addresses for the given hostname.
 //
 // Parameters:
 //   - `aHostname`: The hostname to resolve.
 //
 // Returns:
-//   - `tIpList`: List of IP addresses for the given hostname.
+//   - `TIpList`: List of IP addresses for the given hostname.
 //   - `bool`: `true` if the hostname was found in the cache, `false` otherwise.
-func (cl *tCacheList) ips(aHostname string) (tIpList, bool) {
+func (cl *TCacheList) IPs(aHostname string) (TIpList, bool) {
 	if (nil == cl) || (0 == len(*cl)) {
 		return nil, false
 	}
@@ -399,21 +203,21 @@ func (cl *tCacheList) ips(aHostname string) (tIpList, bool) {
 	}
 
 	return nil, false
-} // ips()
+} // IPs()
 
-// `len()` returns the number of entries in the cache list.
+// `Len()` returns the number of entries in the cache list.
 //
 // Returns:
 //   - `int`: Number of entries in the cache list.
-func (cl *tCacheList) len() int {
+func (cl *TCacheList) Len() int {
 	if nil == cl {
 		return 0
 	}
 
 	return len(*cl)
-} // len()
+} // Len()
 
-// `setEntry()` adds a new cache entry for the given hostname.
+// `SetEntry()` adds a new cache entry for the given hostname.
 //
 // Parameters:
 //   - `aHostname`: The hostname to add a cache entry for.
@@ -421,8 +225,8 @@ func (cl *tCacheList) len() int {
 //   - `aTTL`: Time to live for the cache entry.
 //
 // Returns:
-//   - `*tCacheList`: The updated cache list.
-func (cl *tCacheList) setEntry(aHostname string, aIPs tIpList, aTTL time.Duration) *tCacheList {
+//   - `*TCacheList`: The updated cache list.
+func (cl *TCacheList) SetEntry(aHostname string, aIPs TIpList, aTTL time.Duration) *TCacheList {
 	if (nil == cl) || (nil == aIPs) || (0 == len(aIPs)) {
 		return cl
 	}
@@ -434,14 +238,14 @@ func (cl *tCacheList) setEntry(aHostname string, aIPs tIpList, aTTL time.Duratio
 	}
 
 	return cl
-} // setEntry()
+} // SetEntry()
 
 // `String()` implements the `fmt.Stringer` interface for a string
 // representation of the cache list.
 //
 // Returns:
 //   - `string`: String representation of the cache list.
-func (cl *tCacheList) String() string {
+func (cl *TCacheList) String() string {
 	if nil == cl {
 		return ""
 	}

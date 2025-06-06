@@ -20,23 +20,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mwat56/dnscache/cache"
 	adl "github.com/mwat56/dnscache/internal/adlist"
 )
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
 const (
-	// `defCacheSize` is the default size of the cache list.
-	defCacheSize = 64
-
 	// `defExpireInterval` is the default interval at which expired cache entries are removed from the cache.
 	defExpireInterval = uint8(1 << 4) // 16 minutes
-
-	// `defRetries` is the default number of retries for DNS lookups.
-	defRetries = 3
-
-	// `defTTL` is the default time to live for a DNS cache entry.
-	defTTL = time.Duration(time.Minute << 6) // 64 minutes
 )
 
 type (
@@ -73,14 +65,14 @@ type (
 	// and uses a Mutex to synchronise access to that cache.
 	TResolver struct {
 		sync.RWMutex
-		dnsServers   []string
-		abortExpire  chan struct{} // signal to abort `autoExpire()`
-		abortRefresh chan struct{} // signal to abort `autoRefresh()`
-		adlist       *adl.TADlist  // allow/deny list to check before DNS
-		resolver     *net.Resolver // DNS resolver to use
-		tCacheList                 //list of DNS cache entries
-		ttl          time.Duration // TTL for cache entries
-		retries      uint8         // max. number of retries for DNS lookups
+		dnsServers       []string
+		abortExpire      chan struct{} // signal to abort `autoExpire()`
+		abortRefresh     chan struct{} // signal to abort `autoRefresh()`
+		adlist           *adl.TADlist  // allow/deny list to check before DNS
+		resolver         *net.Resolver // DNS resolver to use
+		cache.TCacheList               //list of DNS cache entries
+		ttl              time.Duration // TTL for cache entries
+		retries          uint8         // max. number of retries for DNS lookups
 	}
 )
 
@@ -144,7 +136,7 @@ func NewWithOptions(aOptions TResolverOptions) *TResolver {
 
 	optCacheSize := aOptions.CacheSize
 	if 0 >= optCacheSize {
-		optCacheSize = defCacheSize
+		optCacheSize = cache.DefaultCacheSize
 	}
 
 	optDataDir := strings.TrimSpace(aOptions.DataDir)
@@ -159,7 +151,7 @@ func NewWithOptions(aOptions TResolverOptions) *TResolver {
 
 	optRetries := aOptions.MaxRetries
 	if 0 == optRetries {
-		optRetries = defRetries
+		optRetries = cache.DefaultRetries
 	}
 
 	result := &TResolver{
@@ -168,12 +160,12 @@ func NewWithOptions(aOptions TResolverOptions) *TResolver {
 		abortRefresh: make(chan struct{}),
 		adlist:       adl.New(optDataDir),
 		resolver:     optResolver,
-		tCacheList:   make(tCacheList, optCacheSize),
+		TCacheList:   make(cache.TCacheList, optCacheSize),
 		retries:      optRetries,
 	}
 
 	if optTTL := aOptions.TTL; 0 == optTTL {
-		result.ttl = defTTL
+		result.ttl = cache.DefaultTTL
 	} else {
 		result.ttl = time.Minute * time.Duration(optTTL)
 	}
@@ -190,7 +182,7 @@ func NewWithOptions(aOptions TResolverOptions) *TResolver {
 	}
 	if 0 < optExpireInterval {
 		// Start the auto-expire goroutine.
-		go result.tCacheList.autoExpire(time.Minute*time.Duration(optExpireInterval), result.abortExpire)
+		go result.TCacheList.AutoExpire(time.Minute*time.Duration(optExpireInterval), result.abortExpire)
 		runtime.Gosched() // yield to the new goroutine
 	}
 
@@ -257,7 +249,7 @@ func (r *TResolver) Fetch(aHostname string) ([]net.IP, error) {
 
 	// Check the local cache
 	r.RLock()
-	ips, ok := r.tCacheList.ips(aHostname)
+	ips, ok := r.TCacheList.IPs(aHostname)
 	r.RUnlock()
 
 	if ok && (0 < len(ips)) {
@@ -398,12 +390,12 @@ func (r *TResolver) LoadBlocklists(aURLs []string) error {
 //   - `aHostname`: The hostname to resolve.
 //
 // Returns:
-//   - `tIpList`: List of IP addresses for the given hostname.
+//   - `TIpList`: List of IP addresses for the given hostname.
 //   - `error`: `nil` if the hostname was resolved successfully, the error otherwise.
-func (r *TResolver) lookup(aCtx context.Context, aHostname string) (tIpList, error) {
+func (r *TResolver) lookup(aCtx context.Context, aHostname string) (cache.TIpList, error) {
 	if nil != r.dnsServers {
 		// Resolve the hostname with multiple DNS servers in parallel
-		results := make(chan tIpList, len(r.dnsServers))
+		results := make(chan cache.TIpList, len(r.dnsServers))
 		// defer close(results)
 
 		// Create child context with cancellation control
@@ -522,8 +514,8 @@ func (r *TResolver) LookupWithTimeout(aCtx context.Context, aHostname string) ([
 
 	// Cache the result
 	r.Lock()
-	r.tCacheList.setEntry(aHostname, ips, r.ttl)
-	setMetricsFieldMax(&gMetrics.Peak, uint32(r.tCacheList.len())) //#nosec G115
+	r.TCacheList.SetEntry(aHostname, ips, r.ttl)
+	setMetricsFieldMax(&gMetrics.Peak, uint32(r.TCacheList.Len())) //#nosec G115
 	r.Unlock()
 
 	return ips, nil
@@ -555,7 +547,7 @@ func (r *TResolver) Refresh() {
 	r.RLock()
 	// This is a shallow clone, the new keys and values
 	// are set using ordinary assignment:
-	hosts := r.tCacheList.clone()
+	hosts := r.TCacheList.Clone()
 	r.RUnlock()
 
 	for hostname := range *hosts {
@@ -572,7 +564,7 @@ func (r *TResolver) Refresh() {
 						// of the cache, but we delete the non-existing
 						// host from our original cache:
 						r.Lock()
-						r.tCacheList.delete(hostname)
+						r.TCacheList.Delete(hostname)
 						r.Unlock()
 					}
 				}
