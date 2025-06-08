@@ -99,7 +99,7 @@ func (tl *TTrieList) Delete(aHostname string) *TTrieList {
 	}
 
 	tl.Lock()
-	tl.node.delete(context.TODO(), pattern2parts(aHostname))
+	tl.node.Delete(context.TODO(), pattern2parts(aHostname))
 	tl.Unlock()
 
 	return tl
@@ -150,13 +150,13 @@ func (tl *TTrieList) expireEntries() {
 // Returns:
 //   - `TIpList`: List of IP addresses for the given hostname.
 //   - `bool`: `true` if the hostname was found in the cache, `false` otherwise.
-func (tl *TTrieList) IPs(aHostname string) (TIpList, bool) {
-	if (nil == tl) || (0 == len(tl.node.tCachedIP.TIpList)) {
+func (tl *TTrieList) IPs(aHostname string) (tIpList, bool) {
+	if nil == tl {
 		return nil, false
 	}
 
 	tl.RLock()
-	ips := tl.node.ips(context.TODO(), pattern2parts(aHostname))
+	ips := tl.node.Read(context.TODO(), pattern2parts(aHostname))
 	tl.RUnlock()
 
 	return ips, (0 < len(ips))
@@ -187,14 +187,14 @@ func (tl *TTrieList) Len() int {
 //
 // Returns:
 //   - `*TTrieList`: The updated cache list.
-func (tl *TTrieList) SetEntry(aHostname string, aIPs TIpList, aTTL time.Duration) *TTrieList {
-	if (nil == tl) || (nil == aIPs) || (0 == len(aIPs)) {
+func (tl *TTrieList) SetEntry(aHostname string, aIPs tIpList, aTTL time.Duration) *TTrieList {
+	if (nil == tl) || (0 == len(aIPs)) {
 		return tl
 	}
 
 	parts := pattern2parts(aHostname)
 	tl.Lock()
-	tl.node.add(context.TODO(), parts, aIPs, aTTL)
+	tl.node.Add(context.TODO(), parts, aIPs, aTTL)
 	tl.Unlock()
 
 	return tl
