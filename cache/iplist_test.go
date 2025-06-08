@@ -16,8 +16,8 @@ import (
 func Test_TIpList_Equal(t *testing.T) {
 	tests := []struct {
 		name  string
-		il    TIpList
-		other TIpList
+		il    tIpList
+		other tIpList
 		want  bool
 	}{
 		{
@@ -29,32 +29,32 @@ func Test_TIpList_Equal(t *testing.T) {
 		{
 			name:  "02 - nil list and non-nil list",
 			il:    nil,
-			other: TIpList{net.ParseIP("192.168.1.1")},
+			other: tIpList{net.ParseIP("192.168.1.1")},
 			want:  false,
 		},
 		{
 			name:  "03 - non-nil list and nil list",
-			il:    TIpList{net.ParseIP("192.168.1.1")},
+			il:    tIpList{net.ParseIP("192.168.1.1")},
 			other: nil,
 			want:  false,
 		},
 		{
 			name: "04 - different length",
-			il:   TIpList{net.ParseIP("192.168.1.1")},
-			other: TIpList{net.ParseIP("192.168.1.1"),
+			il:   tIpList{net.ParseIP("192.168.1.1")},
+			other: tIpList{net.ParseIP("192.168.1.1"),
 				net.ParseIP("192.168.1.2")},
 			want: false,
 		},
 		{
 			name:  "05 - same length but different content",
-			il:    TIpList{net.ParseIP("192.168.1.1")},
-			other: TIpList{net.ParseIP("192.168.1.2")},
+			il:    tIpList{net.ParseIP("192.168.1.1")},
+			other: tIpList{net.ParseIP("192.168.1.2")},
 			want:  false,
 		},
 		{
 			name:  "06 - same length and same content",
-			il:    TIpList{net.ParseIP("192.168.1.1")},
-			other: TIpList{net.ParseIP("192.168.1.1")},
+			il:    tIpList{net.ParseIP("192.168.1.1")},
+			other: tIpList{net.ParseIP("192.168.1.1")},
 			want:  true,
 		},
 		// TODO: Add test cases.
@@ -72,7 +72,7 @@ func Test_TIpList_Equal(t *testing.T) {
 func Test_TIpList_First(t *testing.T) {
 	tests := []struct {
 		name string
-		il   TIpList
+		il   tIpList
 		want net.IP
 	}{
 		{
@@ -82,12 +82,12 @@ func Test_TIpList_First(t *testing.T) {
 		},
 		{
 			name: "02 - empty list",
-			il:   TIpList{},
+			il:   tIpList{},
 			want: nil,
 		},
 		{
 			name: "03 - one element",
-			il:   TIpList{net.ParseIP("192.168.1.1")},
+			il:   tIpList{net.ParseIP("192.168.1.1")},
 			want: net.ParseIP("192.168.1.1"),
 		},
 		// TODO: Add test cases.
@@ -117,7 +117,7 @@ func Test_TIpList_First(t *testing.T) {
 func Test_TIpList_String(t *testing.T) {
 	tests := []struct {
 		name string
-		il   TIpList
+		il   tIpList
 		want string
 	}{
 		{
@@ -127,17 +127,17 @@ func Test_TIpList_String(t *testing.T) {
 		},
 		{
 			name: "02 - empty list",
-			il:   TIpList{},
+			il:   tIpList{},
 			want: "",
 		},
 		{
 			name: "03 - one element",
-			il:   TIpList{net.ParseIP("192.168.1.1")},
+			il:   tIpList{net.ParseIP("192.168.1.1")},
 			want: "192.168.1.1",
 		},
 		{
 			name: "04 - two elements",
-			il:   TIpList{net.ParseIP("192.168.1.1"), net.ParseIP("192.168.1.2")},
+			il:   tIpList{net.ParseIP("192.168.1.1"), net.ParseIP("192.168.1.2")},
 			want: "192.168.1.1 - 192.168.1.2",
 		},
 		// TODO: Add test cases.

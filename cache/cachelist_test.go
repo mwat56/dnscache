@@ -67,7 +67,7 @@ func Test_tCacheList_Clone(t *testing.T) {
 			name: "01 - clone",
 			cl: &TCacheList{
 				"example.com": &TCacheEntry{
-					ips: TIpList{
+					ips: tIpList{
 						net.ParseIP("192.168.1.1"),
 						net.ParseIP("192.168.1.2"),
 					},
@@ -75,7 +75,7 @@ func Test_tCacheList_Clone(t *testing.T) {
 			},
 			want: &TCacheList{
 				"example.com": &TCacheEntry{
-					ips: TIpList{
+					ips: tIpList{
 						net.ParseIP("192.168.1.1"),
 						net.ParseIP("192.168.1.2"),
 					},
@@ -121,7 +121,7 @@ func Test_tCacheList_Clone(t *testing.T) {
 func Test_tCacheList_Delete(t *testing.T) {
 	h1 := "example.com"
 	h2 := "example.org"
-	tc1 := TIpList{
+	tc1 := tIpList{
 		net.ParseIP("192.168.1.1"),
 		net.ParseIP("192.168.1.2"),
 	}
@@ -197,11 +197,11 @@ func Test_tCacheList_Delete(t *testing.T) {
 func Test_tCacheList_Equal(t *testing.T) {
 	h1 := "example.com"
 	h2 := "example.org"
-	tc1 := TIpList{
+	tc1 := tIpList{
 		net.ParseIP("192.168.1.1"),
 		net.ParseIP("192.168.1.2"),
 	}
-	tc2 := TIpList{
+	tc2 := tIpList{
 		net.ParseIP("192.168.1.3"),
 		net.ParseIP("192.168.1.4"),
 	}
@@ -326,21 +326,21 @@ func Test_tCacheList_expireEntries(t *testing.T) {
 			name: "01 - expire entries",
 			cl: &TCacheList{
 				h1: &TCacheEntry{
-					ips: TIpList{
+					ips: tIpList{
 						net.ParseIP("192.168.1.1"),
 						net.ParseIP("192.168.1.2"),
 					},
 					bestBefore: t1.Add(-time.Hour).Add(time.Minute),
 				},
 				h2: &TCacheEntry{
-					ips: TIpList{
+					ips: tIpList{
 						net.ParseIP("192.168.1.3"),
 						net.ParseIP("192.168.1.4"),
 					},
 					bestBefore: t1.Add(time.Hour),
 				},
 				h3: &TCacheEntry{
-					ips: TIpList{
+					ips: tIpList{
 						net.ParseIP("192.168.1.5"),
 						net.ParseIP("192.168.1.6"),
 					},
@@ -349,7 +349,7 @@ func Test_tCacheList_expireEntries(t *testing.T) {
 			},
 			want: &TCacheList{
 				h2: &TCacheEntry{
-					ips: TIpList{
+					ips: tIpList{
 						net.ParseIP("192.168.1.3"),
 						net.ParseIP("192.168.1.4"),
 					},
@@ -384,7 +384,7 @@ func Test_tCacheList_GetEntry(t *testing.T) {
 			name: "01 - found",
 			cl: &TCacheList{
 				"example.com": &TCacheEntry{
-					ips: TIpList{
+					ips: tIpList{
 						net.ParseIP("192.168.1.1"),
 						net.ParseIP("192.168.1.2"),
 					},
@@ -392,7 +392,7 @@ func Test_tCacheList_GetEntry(t *testing.T) {
 			},
 			host: "example.com",
 			want: &TCacheEntry{
-				ips: TIpList{
+				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
 				},
@@ -403,7 +403,7 @@ func Test_tCacheList_GetEntry(t *testing.T) {
 			name: "02 - not found",
 			cl: &TCacheList{
 				"example.com": &TCacheEntry{
-					ips: TIpList{
+					ips: tIpList{
 						net.ParseIP("192.168.1.1"),
 						net.ParseIP("192.168.1.2"),
 					},
@@ -454,7 +454,7 @@ func Test_tCacheList_GetEntry(t *testing.T) {
 func Test_tCacheList_IPs(t *testing.T) {
 	h1 := "example.com"
 	h2 := "example.org"
-	tc1 := TIpList{
+	tc1 := tIpList{
 		net.ParseIP("192.168.1.1"),
 		net.ParseIP("192.168.1.2"),
 	}
@@ -463,7 +463,7 @@ func Test_tCacheList_IPs(t *testing.T) {
 		name    string
 		cl      *TCacheList
 		host    string
-		wantIPs TIpList
+		wantIPs tIpList
 		wantOK  bool
 	}{
 		{
@@ -519,16 +519,16 @@ func Test_tCacheList_IPs(t *testing.T) {
 func Test_tCacheList_SetEntry(t *testing.T) {
 	type tArgs struct {
 		aHostname string
-		aIPs      TIpList
+		aIPs      tIpList
 	}
 
 	t1 := time.Now()
 	h1 := "example.com"
-	tc1 := TIpList{
+	tc1 := tIpList{
 		net.ParseIP("192.168.1.1"),
 		net.ParseIP("192.168.1.2"),
 	}
-	tc2 := TIpList{
+	tc2 := tIpList{
 		net.ParseIP("192.168.1.3"),
 		net.ParseIP("192.168.1.4"),
 	}
@@ -599,7 +599,7 @@ func Test_tCacheList_SetEntry(t *testing.T) {
 			},
 			args: tArgs{
 				aHostname: h1,
-				aIPs:      TIpList{},
+				aIPs:      tIpList{},
 			},
 			want: &TCacheList{
 				h1: &TCacheEntry{
@@ -635,7 +635,7 @@ func Test_tCacheList_SetEntry(t *testing.T) {
 
 func Test_tCacheList_String(t *testing.T) {
 	h1 := "example.com"
-	tc1 := TIpList{
+	tc1 := tIpList{
 		net.ParseIP("192.168.1.1"),
 		net.ParseIP("192.168.1.2"),
 		net.ParseIP("192.168.1.3"),

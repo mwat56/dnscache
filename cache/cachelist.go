@@ -188,7 +188,7 @@ func (cl *TCacheList) GetEntry(aHostname string) (*TCacheEntry, bool) {
 // Returns:
 //   - `TIpList`: List of IP addresses for the given hostname.
 //   - `bool`: `true` if the hostname was found in the cache, `false` otherwise.
-func (cl *TCacheList) IPs(aHostname string) (TIpList, bool) {
+func (cl *TCacheList) IPs(aHostname string) (tIpList, bool) {
 	if (nil == cl) || (0 == len(*cl)) {
 		return nil, false
 	}
@@ -221,7 +221,7 @@ func (cl *TCacheList) Len() int {
 //
 // Returns:
 //   - `*TCacheList`: The updated cache list.
-func (cl *TCacheList) SetEntry(aHostname string, aIPs TIpList, aTTL time.Duration) *TCacheList {
+func (cl *TCacheList) SetEntry(aHostname string, aIPs tIpList, aTTL time.Duration) *TCacheList {
 	if (nil == cl) || (nil == aIPs) || (0 == len(aIPs)) {
 		return cl
 	}

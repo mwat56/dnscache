@@ -21,13 +21,13 @@ const (
 	defTimeFormat = "2006-01-02 15:04:05.999999999"
 
 	// `DefaultTTL` is the default time to live for a DNS cache entry.
-	DefaultTTL = time.Duration(time.Minute << 6) // 64 minutes
+	DefaultTTL = time.Duration(time.Minute << 9) // ~8 hours
 )
 
 type (
 	// `TCacheEntry` is a DNS cache entry.
 	TCacheEntry struct {
-		ips        TIpList   // IP addresses for this entry
+		ips        tIpList   // IP addresses for this entry
 		bestBefore time.Time // time after which the entry is not valid
 	}
 )
@@ -68,7 +68,7 @@ func (ce *TCacheEntry) clone() *TCacheEntry {
 		bestBefore: ce.bestBefore,
 	}
 	if (nil != ce.ips) && (0 < len(ce.ips)) {
-		result.ips = make(TIpList, len(ce.ips))
+		result.ips = make(tIpList, len(ce.ips))
 		copy(result.ips, ce.ips)
 	}
 
@@ -173,7 +173,7 @@ func (ce *TCacheEntry) String() string {
 //
 // Returns:
 //   - `*TCacheEntry`: The updated cache entry.
-func (ce *TCacheEntry) update(aIPs TIpList, aTTL time.Duration) *TCacheEntry {
+func (ce *TCacheEntry) update(aIPs tIpList, aTTL time.Duration) *TCacheEntry {
 	if (nil == ce) || (nil == aIPs) || (0 == len(aIPs)) {
 		return ce
 	}
@@ -184,10 +184,10 @@ func (ce *TCacheEntry) update(aIPs TIpList, aTTL time.Duration) *TCacheEntry {
 	if !ce.ips.Equal(aIPs) {
 		if iLen := len(aIPs); 0 < iLen {
 			// Assume ownership of `aIPs`
-			ce.ips = make(TIpList, iLen)
+			ce.ips = make(tIpList, iLen)
 			copy(ce.ips, aIPs)
 		} else {
-			ce.ips = TIpList{}
+			ce.ips = tIpList{}
 		}
 	}
 

@@ -389,12 +389,12 @@ func (r *TResolver) LoadBlocklists(aURLs []string) error {
 //   - `aHostname`: The hostname to resolve.
 //
 // Returns:
-//   - `TIpList`: List of IP addresses for the given hostname.
+//   - `[]net.IP`: List of IP addresses for the given hostname.
 //   - `error`: `nil` if the hostname was resolved successfully, the error otherwise.
-func (r *TResolver) lookup(aCtx context.Context, aHostname string) (cache.TIpList, error) {
+func (r *TResolver) lookup(aCtx context.Context, aHostname string) ([]net.IP, error) {
 	if nil != r.dnsServers {
 		// Resolve the hostname with multiple DNS servers in parallel
-		results := make(chan cache.TIpList, len(r.dnsServers))
+		results := make(chan []net.IP, len(r.dnsServers))
 		// defer close(results)
 
 		// Create child context with cancellation control

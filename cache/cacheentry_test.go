@@ -17,7 +17,7 @@ import (
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
 func Test_tCacheEntry_clone(t *testing.T) {
-	tc1 := TIpList{
+	tc1 := tIpList{
 		net.ParseIP("192.168.1.1"),
 		net.ParseIP("192.168.1.2"),
 	}
@@ -78,15 +78,15 @@ func Test_tCacheEntry_clone(t *testing.T) {
 } // Test_tCacheEntry_clone()
 
 func Test_tCacheEntry_Equal(t *testing.T) {
-	tc1 := TIpList{
+	tc1 := tIpList{
 		net.ParseIP("192.168.1.1"),
 		net.ParseIP("192.168.1.2"),
 	}
-	tc2 := TIpList{
+	tc2 := tIpList{
 		net.ParseIP("192.168.1.3"),
 		net.ParseIP("192.168.1.4"),
 	}
-	tc3 := TIpList{
+	tc3 := tIpList{
 		net.ParseIP("192.168.1.3"),
 		net.ParseIP("192.168.1.4"),
 		net.ParseIP("192.168.1.5"),
@@ -179,7 +179,7 @@ func Test_tCacheEntry_isExpired(t *testing.T) {
 		{
 			name: "01 - expired",
 			ce: &TCacheEntry{
-				ips: TIpList{
+				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
 				},
@@ -197,7 +197,7 @@ func Test_tCacheEntry_isExpired(t *testing.T) {
 		{
 			name: "03 - expired at creation",
 			ce: &TCacheEntry{
-				ips: TIpList{
+				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
 				},
@@ -208,7 +208,7 @@ func Test_tCacheEntry_isExpired(t *testing.T) {
 		{
 			name: "04 - expired just now",
 			ce: &TCacheEntry{
-				ips: TIpList{
+				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
 				},
@@ -219,7 +219,7 @@ func Test_tCacheEntry_isExpired(t *testing.T) {
 		{
 			name: "05 - not expired yet",
 			ce: &TCacheEntry{
-				ips: TIpList{
+				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
 				},
@@ -230,7 +230,7 @@ func Test_tCacheEntry_isExpired(t *testing.T) {
 		{
 			name: "06 - expired in the future",
 			ce: &TCacheEntry{
-				ips: TIpList{
+				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
 				},
@@ -254,7 +254,7 @@ func Test_tCacheEntry_isExpired(t *testing.T) {
 
 func Test_tCacheEntry_String(t *testing.T) {
 	t1 := time.Now()
-	tc1 := TIpList{
+	tc1 := tIpList{
 		net.ParseIP("192.168.1.1"),
 		net.ParseIP("192.168.1.2"),
 		net.ParseIP("192.168.1.3"),
@@ -306,23 +306,23 @@ func Test_tCacheEntry_update(t *testing.T) {
 	tests := []struct {
 		name   string
 		ce     *TCacheEntry
-		newIPs TIpList
+		newIPs tIpList
 		wantCE *TCacheEntry
 	}{
 		{
 			name: "01 - update with different IPs",
 			ce: &TCacheEntry{
-				ips: TIpList{
+				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
 				},
 			},
-			newIPs: TIpList{
+			newIPs: tIpList{
 				net.ParseIP("192.168.1.3"),
 				net.ParseIP("192.168.1.4"),
 			},
 			wantCE: &TCacheEntry{
-				ips: TIpList{
+				ips: tIpList{
 					net.ParseIP("192.168.1.3"),
 					net.ParseIP("192.168.1.4"),
 				},
@@ -331,17 +331,17 @@ func Test_tCacheEntry_update(t *testing.T) {
 		{
 			name: "02 - update with same IPs",
 			ce: &TCacheEntry{
-				ips: TIpList{
+				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
 				},
 			},
-			newIPs: TIpList{
+			newIPs: tIpList{
 				net.ParseIP("192.168.1.1"),
 				net.ParseIP("192.168.1.2"),
 			},
 			wantCE: &TCacheEntry{
-				ips: TIpList{
+				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
 				},
@@ -350,14 +350,14 @@ func Test_tCacheEntry_update(t *testing.T) {
 		{
 			name: "03 - update with nil IPs",
 			ce: &TCacheEntry{
-				ips: TIpList{
+				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
 				},
 			},
 			newIPs: nil,
 			wantCE: &TCacheEntry{
-				ips: TIpList{
+				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
 				},
@@ -366,14 +366,14 @@ func Test_tCacheEntry_update(t *testing.T) {
 		{
 			name: "04 - update with empty IPs",
 			ce: &TCacheEntry{
-				ips: TIpList{
+				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
 				},
 			},
-			newIPs: TIpList{},
+			newIPs: tIpList{},
 			wantCE: &TCacheEntry{
-				ips: TIpList{
+				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
 				},

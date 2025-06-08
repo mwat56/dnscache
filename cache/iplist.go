@@ -16,12 +16,12 @@ import (
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
 type (
-	// `TIpList` is a list of IP addresses.
-	TIpList []net.IP
+	// `tIpList` is a list of IP addresses.
+	tIpList []net.IP
 )
 
 // ---------------------------------------------------------------------------
-// `TIpList` methods:
+// `tIpList` methods:
 
 // `Equal()` checks whether the IP list is equal to the given one.
 //
@@ -30,7 +30,7 @@ type (
 //
 // Returns:
 //   - `bool`: `true` if the lists are equal, `false` otherwise.
-func (il TIpList) Equal(aList TIpList) bool {
+func (il tIpList) Equal(aList tIpList) bool {
 	if nil == il {
 		return nil == aList
 	}
@@ -50,8 +50,8 @@ func (il TIpList) Equal(aList TIpList) bool {
 //
 // Returns:
 //   - `net.IP`: First IP address in the list.
-func (il TIpList) First() net.IP {
-	if (nil == il) || (0 == len(il)) {
+func (il tIpList) First() net.IP {
+	if 0 == len(il) {
 		return nil
 	}
 
@@ -62,7 +62,7 @@ func (il TIpList) First() net.IP {
 //
 // Returns:
 //   - `int`: Number of IP addresses in the list.
-func (il TIpList) Len() int {
+func (il tIpList) Len() int {
 	return len(il)
 } // Len()
 
@@ -71,15 +71,12 @@ func (il TIpList) Len() int {
 //
 // Returns:
 //   - `string`: String representation of the IP list.
-func (il TIpList) String() string {
-	if nil == il {
-		return ""
-	}
+func (il tIpList) String() string {
 	lLen := len(il)
-	if 0 == lLen {
+	switch lLen {
+	case 0:
 		return ""
-	}
-	if 1 == lLen {
+	case 1:
 		return il[0].String()
 	}
 

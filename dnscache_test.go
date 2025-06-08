@@ -131,7 +131,7 @@ func Test_NewWithOptions(t *testing.T) {
 
 				testHost := "test.example.com"
 				testIP := net.ParseIP("192.168.1.1")
-				r.TCacheList.SetEntry(testHost, cache.TIpList{testIP}, cache.DefaultTTL)
+				r.TCacheList.SetEntry(testHost, []net.IP{testIP}, cache.DefaultTTL)
 
 				// Verify the element was added successfully
 				ce, ok := r.TCacheList.GetEntry(testHost)
@@ -209,7 +209,7 @@ func Test_TResolver_Fetch(t *testing.T) {
 			name:     "fetch from cache",
 			hostname: "cached.example.com",
 			setup: func(r *TResolver) {
-				r.TCacheList.SetEntry("cached.example.com", cache.TIpList{
+				r.TCacheList.SetEntry("cached.example.com", []net.IP{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
 				}, cache.DefaultTTL)
@@ -274,7 +274,7 @@ func Test_TResolver_FetchFirstString(t *testing.T) {
 			name:     "fetch from cache",
 			hostname: "cached.example.com",
 			setup: func(r *TResolver) {
-				r.TCacheList.SetEntry("cached.example.com", cache.TIpList{
+				r.TCacheList.SetEntry("cached.example.com", []net.IP{
 					net.ParseIP("192.168.1.1"),
 				}, cache.DefaultTTL)
 			},
@@ -347,7 +347,7 @@ func Test_TResolver_FetchRandomString(t *testing.T) {
 			name:     "fetch from cache",
 			hostname: "cached.example.com",
 			setup: func(r *TResolver) {
-				r.TCacheList.SetEntry("cached.example.com", cache.TIpList{
+				r.TCacheList.SetEntry("cached.example.com", []net.IP{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
 				}, cache.DefaultTTL)
@@ -410,7 +410,7 @@ func Test_TResolver_lookup(t *testing.T) {
 		resolver *TResolver
 		hostname string
 		setup    func(*TResolver)
-		wantIPs  cache.TIpList
+		wantIPs  []net.IP
 		wantErr  bool
 	}{
 		/* */
@@ -420,7 +420,7 @@ func Test_TResolver_lookup(t *testing.T) {
 			hostname: "cached.example.com",
 			setup: func(r *TResolver) {
 				// The cache isn't actually used in this execution path.
-				r.TCacheList.SetEntry("cached.example.com", cache.TIpList{
+				r.TCacheList.SetEntry("cached.example.com", []net.IP{
 					net.ParseIP("192.168.1.1"),
 				}, cache.DefaultTTL)
 			},
@@ -432,7 +432,7 @@ func Test_TResolver_lookup(t *testing.T) {
 			resolver: New(0),
 			hostname: "dnscache.ggl.io",
 			setup:    func(r *TResolver) {},
-			wantIPs: cache.TIpList{
+			wantIPs: []net.IP{
 				net.ParseIP("3.33.165.172"),
 				net.ParseIP("15.197.228.149"),
 			},
@@ -454,7 +454,7 @@ func Test_TResolver_lookup(t *testing.T) {
 			setup: func(r *TResolver) {
 				r.dnsServers = []string{"8.8.8.8", "8.8.4.4"}
 			},
-			wantIPs: cache.TIpList{
+			wantIPs: []net.IP{
 				net.ParseIP("3.33.165.172"),
 				net.ParseIP("15.197.228.149"),
 			},
@@ -509,10 +509,10 @@ func Test_TResolver_Refresh(t *testing.T) {
 			name: "multiple entries with valid hosts",
 			setup: func(r *TResolver) {
 				// Use real domains that should resolve successfully
-				r.TCacheList.SetEntry("example.com", cache.TIpList{
+				r.TCacheList.SetEntry("example.com", []net.IP{
 					net.ParseIP("93.184.216.34"), // example.com's IP
 				}, cache.DefaultTTL)
-				r.TCacheList.SetEntry("google.com", cache.TIpList{
+				r.TCacheList.SetEntry("google.com", []net.IP{
 					net.ParseIP("142.250.185.78"), // one of Google's IPs
 				}, cache.DefaultTTL)
 			},
@@ -536,7 +536,7 @@ func Test_TResolver_Refresh(t *testing.T) {
 			name: "entries with invalid hosts",
 			setup: func(r *TResolver) {
 				// Use a non-existent domain that should fail DNS lookup
-				r.TCacheList.SetEntry("invalid.example.nonexistent", cache.TIpList{
+				r.TCacheList.SetEntry("invalid.example.nonexistent", []net.IP{
 					net.ParseIP("192.168.1.1"),
 				}, cache.DefaultTTL)
 			},
