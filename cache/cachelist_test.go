@@ -19,27 +19,27 @@ func Test_New(t *testing.T) {
 	tests := []struct {
 		name string
 		size uint
-		want TCacheList
+		want *TCacheList
 	}{
 		{
 			name: "zero size",
 			size: 0,
-			want: TCacheList{},
+			want: &TCacheList{},
 		},
 		{
 			name: "positive size",
 			size: 1,
-			want: TCacheList{},
+			want: &TCacheList{},
 		},
 		{
 			name: "default size",
 			size: DefaultCacheSize,
-			want: TCacheList{},
+			want: &TCacheList{},
 		},
 		{
 			name: "large size",
 			size: 1024,
-			want: TCacheList{},
+			want: &TCacheList{},
 		},
 
 		// TODO: Add test cases.
@@ -49,7 +49,7 @@ func Test_New(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got := New(tc.size)
 
-			if !tc.want.Equal(&got) {
+			if !tc.want.Equal(got) {
 				t.Errorf("New() = %v, want %v",
 					got, tc.want)
 			}
@@ -66,18 +66,22 @@ func Test_tCacheList_Clone(t *testing.T) {
 		{
 			name: "01 - clone",
 			cl: &TCacheList{
-				"example.com": &TCacheEntry{
-					ips: tIpList{
-						net.ParseIP("192.168.1.1"),
-						net.ParseIP("192.168.1.2"),
+				Cache: map[string]*TCacheEntry{
+					"example.com": {
+						ips: tIpList{
+							net.ParseIP("192.168.1.1"),
+							net.ParseIP("192.168.1.2"),
+						},
 					},
 				},
 			},
 			want: &TCacheList{
-				"example.com": &TCacheEntry{
-					ips: tIpList{
-						net.ParseIP("192.168.1.1"),
-						net.ParseIP("192.168.1.2"),
+				Cache: map[string]*TCacheEntry{
+					"example.com": {
+						ips: tIpList{
+							net.ParseIP("192.168.1.1"),
+							net.ParseIP("192.168.1.2"),
+						},
 					},
 				},
 			},
@@ -135,8 +139,10 @@ func Test_tCacheList_Delete(t *testing.T) {
 		{
 			name: "01 - delete",
 			cl: &TCacheList{
-				h1: &TCacheEntry{
-					ips: tc1,
+				Cache: map[string]*TCacheEntry{
+					h1: {
+						ips: tc1,
+					},
 				},
 			},
 			host: h1,
@@ -157,14 +163,18 @@ func Test_tCacheList_Delete(t *testing.T) {
 		{
 			name: "04 - delete non-existent",
 			cl: &TCacheList{
-				h1: &TCacheEntry{
-					ips: tc1,
+				Cache: map[string]*TCacheEntry{
+					h1: {
+						ips: tc1,
+					},
 				},
 			},
 			host: h2,
 			want: &TCacheList{
-				h1: &TCacheEntry{
-					ips: tc1,
+				Cache: map[string]*TCacheEntry{
+					h1: {
+						ips: tc1,
+					},
 				},
 			},
 		},
@@ -182,12 +192,12 @@ func Test_tCacheList_Delete(t *testing.T) {
 				return
 			}
 			if nil == tc.want {
-				t.Errorf("tCacheList.delete() = %v, want 'nil'",
+				t.Errorf("tCacheList.delete() =\n%q\nwant 'nil'",
 					got)
 				return
 			}
 			if !tc.want.Equal(got) {
-				t.Errorf("tCacheList.delete() = %v, want %v",
+				t.Errorf("tCacheList.delete() =\n%q\nwant\n%q",
 					got, tc.want)
 			}
 		})
@@ -215,13 +225,17 @@ func Test_tCacheList_Equal(t *testing.T) {
 		{
 			name: "01 - equal",
 			cl: &TCacheList{
-				h1: &TCacheEntry{
-					ips: tc1,
+				Cache: map[string]*TCacheEntry{
+					h1: {
+						ips: tc1,
+					},
 				},
 			},
 			ol: &TCacheList{
-				h1: &TCacheEntry{
-					ips: tc1,
+				Cache: map[string]*TCacheEntry{
+					h1: {
+						ips: tc1,
+					},
 				},
 			},
 			want: true,
@@ -229,13 +243,17 @@ func Test_tCacheList_Equal(t *testing.T) {
 		{
 			name: "02 - not equal",
 			cl: &TCacheList{
-				h1: &TCacheEntry{
-					ips: tc1,
+				Cache: map[string]*TCacheEntry{
+					h1: {
+						ips: tc1,
+					},
 				},
 			},
 			ol: &TCacheList{
-				h1: &TCacheEntry{
-					ips: tc2,
+				Cache: map[string]*TCacheEntry{
+					h1: {
+						ips: tc2,
+					},
 				},
 			},
 			want: false,
@@ -244,8 +262,10 @@ func Test_tCacheList_Equal(t *testing.T) {
 			name: "03 - nil cl",
 			cl:   nil,
 			ol: &TCacheList{
-				h1: &TCacheEntry{
-					ips: tc1,
+				Cache: map[string]*TCacheEntry{
+					h1: {
+						ips: tc1,
+					},
 				},
 			},
 			want: false,
@@ -253,8 +273,10 @@ func Test_tCacheList_Equal(t *testing.T) {
 		{
 			name: "04 - nil ol",
 			cl: &TCacheList{
-				h1: &TCacheEntry{
-					ips: tc1,
+				Cache: map[string]*TCacheEntry{
+					h1: {
+						ips: tc1,
+					},
 				},
 			},
 			ol:   nil,
@@ -269,16 +291,20 @@ func Test_tCacheList_Equal(t *testing.T) {
 		{
 			name: "06 - different length",
 			cl: &TCacheList{
-				h1: &TCacheEntry{
-					ips: tc1,
-				},
-				h2: &TCacheEntry{
-					ips: tc2,
+				Cache: map[string]*TCacheEntry{
+					h1: {
+						ips: tc1,
+					},
+					h2: {
+						ips: tc2,
+					},
 				},
 			},
 			ol: &TCacheList{
-				h1: &TCacheEntry{
-					ips: tc1,
+				Cache: map[string]*TCacheEntry{
+					h1: {
+						ips: tc1,
+					},
 				},
 			},
 			want: false,
@@ -286,13 +312,17 @@ func Test_tCacheList_Equal(t *testing.T) {
 		{
 			name: "07 - different hostnames",
 			cl: &TCacheList{
-				h1: &TCacheEntry{
-					ips: tc1,
+				Cache: map[string]*TCacheEntry{
+					h1: {
+						ips: tc1,
+					},
 				},
 			},
 			ol: &TCacheList{
-				h2: &TCacheEntry{
-					ips: tc1,
+				Cache: map[string]*TCacheEntry{
+					h2: {
+						ips: tc1,
+					},
 				},
 			},
 			want: false,
@@ -325,35 +355,39 @@ func Test_tCacheList_expireEntries(t *testing.T) {
 		{
 			name: "01 - expire entries",
 			cl: &TCacheList{
-				h1: &TCacheEntry{
-					ips: tIpList{
-						net.ParseIP("192.168.1.1"),
-						net.ParseIP("192.168.1.2"),
+				Cache: map[string]*TCacheEntry{
+					h1: {
+						ips: tIpList{
+							net.ParseIP("192.168.1.1"),
+							net.ParseIP("192.168.1.2"),
+						},
+						bestBefore: t1.Add(-time.Hour).Add(time.Minute),
 					},
-					bestBefore: t1.Add(-time.Hour).Add(time.Minute),
-				},
-				h2: &TCacheEntry{
-					ips: tIpList{
-						net.ParseIP("192.168.1.3"),
-						net.ParseIP("192.168.1.4"),
+					h2: {
+						ips: tIpList{
+							net.ParseIP("192.168.1.3"),
+							net.ParseIP("192.168.1.4"),
+						},
+						bestBefore: t1.Add(time.Hour),
 					},
-					bestBefore: t1.Add(time.Hour),
-				},
-				h3: &TCacheEntry{
-					ips: tIpList{
-						net.ParseIP("192.168.1.5"),
-						net.ParseIP("192.168.1.6"),
+					h3: {
+						ips: tIpList{
+							net.ParseIP("192.168.1.5"),
+							net.ParseIP("192.168.1.6"),
+						},
+						bestBefore: t1.Add(-time.Hour).Add(time.Minute),
 					},
-					bestBefore: t1.Add(-time.Hour).Add(time.Minute),
 				},
 			},
 			want: &TCacheList{
-				h2: &TCacheEntry{
-					ips: tIpList{
-						net.ParseIP("192.168.1.3"),
-						net.ParseIP("192.168.1.4"),
+				Cache: map[string]*TCacheEntry{
+					h2: {
+						ips: tIpList{
+							net.ParseIP("192.168.1.3"),
+							net.ParseIP("192.168.1.4"),
+						},
+						bestBefore: t1.Add(time.Hour),
 					},
-					bestBefore: t1.Add(time.Hour),
 				},
 			},
 		},
@@ -383,10 +417,12 @@ func Test_tCacheList_GetEntry(t *testing.T) {
 		{
 			name: "01 - found",
 			cl: &TCacheList{
-				"example.com": &TCacheEntry{
-					ips: tIpList{
-						net.ParseIP("192.168.1.1"),
-						net.ParseIP("192.168.1.2"),
+				Cache: map[string]*TCacheEntry{
+					"example.com": {
+						ips: tIpList{
+							net.ParseIP("192.168.1.1"),
+							net.ParseIP("192.168.1.2"),
+						},
 					},
 				},
 			},
@@ -402,10 +438,12 @@ func Test_tCacheList_GetEntry(t *testing.T) {
 		{
 			name: "02 - not found",
 			cl: &TCacheList{
-				"example.com": &TCacheEntry{
-					ips: tIpList{
-						net.ParseIP("192.168.1.1"),
-						net.ParseIP("192.168.1.2"),
+				Cache: map[string]*TCacheEntry{
+					"example.com": {
+						ips: tIpList{
+							net.ParseIP("192.168.1.1"),
+							net.ParseIP("192.168.1.2"),
+						},
 					},
 				},
 			},
@@ -469,8 +507,10 @@ func Test_tCacheList_IPs(t *testing.T) {
 		{
 			name: "01 - found",
 			cl: &TCacheList{
-				h1: &TCacheEntry{
-					ips: tc1,
+				Cache: map[string]*TCacheEntry{
+					h1: {
+						ips: tc1,
+					},
 				},
 			},
 			host:    h1,
@@ -480,8 +520,10 @@ func Test_tCacheList_IPs(t *testing.T) {
 		{
 			name: "02 - not found",
 			cl: &TCacheList{
-				h1: &TCacheEntry{
-					ips: tc1,
+				Cache: map[string]*TCacheEntry{
+					h1: {
+						ips: tc1,
+					},
 				},
 			},
 			host:    h2,
@@ -548,18 +590,22 @@ func Test_tCacheList_SetEntry(t *testing.T) {
 				aIPs:      tc1,
 			},
 			want: &TCacheList{
-				h1: &TCacheEntry{
-					ips:        tc1,
-					bestBefore: t1.Add(DefaultTTL),
+				Cache: map[string]*TCacheEntry{
+					h1: {
+						ips:        tc1,
+						bestBefore: t1.Add(DefaultTTL),
+					},
 				},
 			},
 		},
 		{
 			name: "02 - update existing entry",
 			cl: &TCacheList{
-				h1: &TCacheEntry{
-					ips:        tc1,
-					bestBefore: t1.Add(DefaultTTL),
+				Cache: map[string]*TCacheEntry{
+					h1: {
+						ips:        tc1,
+						bestBefore: t1.Add(DefaultTTL),
+					},
 				},
 			},
 			args: tArgs{
@@ -567,17 +613,21 @@ func Test_tCacheList_SetEntry(t *testing.T) {
 				aIPs:      tc2,
 			},
 			want: &TCacheList{
-				h1: &TCacheEntry{
-					ips:        tc2,
-					bestBefore: t1.Add(DefaultTTL),
+				Cache: map[string]*TCacheEntry{
+					h1: {
+						ips:        tc2,
+						bestBefore: t1.Add(DefaultTTL),
+					},
 				},
 			},
 		},
 		{
 			name: "03 - set nil IPs",
 			cl: &TCacheList{
-				h1: &TCacheEntry{
-					ips: tc1,
+				Cache: map[string]*TCacheEntry{
+					h1: {
+						ips: tc1,
+					},
 				},
 			},
 			args: tArgs{
@@ -585,16 +635,20 @@ func Test_tCacheList_SetEntry(t *testing.T) {
 				aIPs:      nil,
 			},
 			want: &TCacheList{
-				h1: &TCacheEntry{
-					ips: tc1,
+				Cache: map[string]*TCacheEntry{
+					h1: {
+						ips: tc1,
+					},
 				},
 			},
 		},
 		{
 			name: "04 - set empty IPs",
 			cl: &TCacheList{
-				h1: &TCacheEntry{
-					ips: tc1,
+				Cache: map[string]*TCacheEntry{
+					h1: {
+						ips: tc1,
+					},
 				},
 			},
 			args: tArgs{
@@ -602,8 +656,10 @@ func Test_tCacheList_SetEntry(t *testing.T) {
 				aIPs:      tIpList{},
 			},
 			want: &TCacheList{
-				h1: &TCacheEntry{
-					ips: tc1,
+				Cache: map[string]*TCacheEntry{
+					h1: {
+						ips: tc1,
+					},
 				},
 			},
 		},
@@ -660,8 +716,10 @@ func Test_tCacheList_String(t *testing.T) {
 		{
 			name: "02 - one entry",
 			cl: &TCacheList{
-				h1: &TCacheEntry{
-					ips: tc1,
+				Cache: map[string]*TCacheEntry{
+					h1: {
+						ips: tc1,
+					},
 				},
 			},
 			want: fmt.Sprintf("%s: %s\n%s\n",

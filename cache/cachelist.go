@@ -11,6 +11,7 @@ import (
 	"maps"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -18,13 +19,16 @@ import (
 
 const (
 	// `DefaultCacheSize` is the initial size of the cache list.
-	DefaultCacheSize = 1 << 9 // 512
+	DefaultCacheSize = 1 << 10 // 1024
 )
 
 type (
 	// `TCacheList` is a map of DNS cache entries
-	// indexed by the hostname.
-	TCacheList map[string]*TCacheEntry
+	// indexed by lowercased hostnames.
+	TCacheList struct {
+		sync.RWMutex
+		Cache map[string]*TCacheEntry
+	}
 )
 
 // ---------------------------------------------------------------------------
@@ -32,19 +36,21 @@ type (
 
 // `New()` returns a new IP address cache list.
 //
-// If `aSize` is zero, the default size (`512`) is used.
+// If `aSize` is zero, the default size (`1024`) is used.
 //
 // Parameters:
 //   - `aSize`: Initial size of the cache list.
 //
 // Returns:
-//   - `TCacheList`: A new IP address cache list.
-func New(aSize uint) TCacheList {
+//   - `*TCacheList`: A new IP address cache list.
+func New(aSize uint) *TCacheList {
 	if 0 == aSize {
 		aSize = DefaultCacheSize
 	}
 
-	return make(TCacheList, aSize)
+	return &TCacheList{
+		Cache: make(map[string]*TCacheEntry, aSize),
+	}
 } // New()
 
 // ---------------------------------------------------------------------------
@@ -82,12 +88,16 @@ func (cl *TCacheList) Clone() *TCacheList {
 		return nil
 	}
 
-	result := make(TCacheList, len(*cl))
-	for host, ce := range *cl {
-		result[host] = ce.clone()
+	result := &TCacheList{
+		Cache: make(map[string]*TCacheEntry, len(cl.Cache)),
 	}
+	cl.RLock()
+	for host, ce := range cl.Cache {
+		result.Cache[host] = ce.clone()
+	}
+	cl.RUnlock()
 
-	return &result
+	return result
 } // Clone()
 
 // `Delete()` removes the cache entry for the given hostname.
@@ -101,8 +111,14 @@ func (cl *TCacheList) Delete(aHostname string) *TCacheList {
 	if nil == cl {
 		return nil
 	}
+	if aHostname = strings.TrimSpace(aHostname); 0 == len(aHostname) {
+		return cl
+	}
+	aHostname = strings.ToLower(aHostname)
 
-	delete(*cl, aHostname)
+	cl.Lock()
+	delete(cl.Cache, aHostname)
+	cl.Unlock()
 
 	return cl
 } // Delete()
@@ -121,26 +137,29 @@ func (cl *TCacheList) Equal(aList *TCacheList) bool {
 	if nil == aList {
 		return false
 	}
-	if len(*cl) != len(*aList) {
+	if len(cl.Cache) != len(aList.Cache) {
 		return false
 	}
 	var (
-		otherE *TCacheEntry
-		ok     bool
+		otherEntry *TCacheEntry
+		ok         bool = true
 	)
 
+	cl.RLock()
+	aList.RLock()
 	// Check whether all entries in `cl` are also in `aList`
-	for host, myE := range *cl {
-		otherE, ok = (*aList)[host]
-		if !ok {
-			return false
+	for host, myEntry := range cl.Cache {
+		if otherEntry, ok = aList.Cache[host]; !ok {
+			break
 		}
-		if !myE.Equal(otherE) {
-			return false
+		if ok = myEntry.Equal(otherEntry); !ok {
+			break
 		}
 	}
+	aList.RUnlock()
+	cl.RUnlock()
 
-	return true
+	return ok
 } // Equal()
 
 // `expireEntries()` removes all expired cache entries.
@@ -151,10 +170,12 @@ func (cl *TCacheList) expireEntries() {
 		return
 	}
 
-	clone := maps.Clone(*cl)
+	clone := maps.Clone(cl.Cache)
 	for hostname, ce := range clone {
 		if ce.isExpired() {
-			delete(*cl, hostname)
+			cl.Lock()
+			delete(cl.Cache, hostname)
+			cl.Unlock()
 		}
 	}
 	clone = nil
@@ -172,12 +193,16 @@ func (cl *TCacheList) GetEntry(aHostname string) (*TCacheEntry, bool) {
 	if nil == cl {
 		return nil, false
 	}
-
-	if ce, ok := (*cl)[aHostname]; ok {
-		return ce, true
+	if aHostname = strings.TrimSpace(aHostname); 0 == len(aHostname) {
+		return nil, false
 	}
+	aHostname = strings.ToLower(aHostname)
 
-	return nil, false
+	cl.RLock()
+	ce, ok := cl.Cache[strings.ToLower(aHostname)]
+	cl.RUnlock()
+
+	return ce, ok
 } // GetEntry()
 
 // `IPs()` returns the IP addresses for the given hostname.
@@ -189,11 +214,18 @@ func (cl *TCacheList) GetEntry(aHostname string) (*TCacheEntry, bool) {
 //   - `TIpList`: List of IP addresses for the given hostname.
 //   - `bool`: `true` if the hostname was found in the cache, `false` otherwise.
 func (cl *TCacheList) IPs(aHostname string) (tIpList, bool) {
-	if (nil == cl) || (0 == len(*cl)) {
+	if (nil == cl) || (0 == len(cl.Cache)) {
 		return nil, false
 	}
+	if aHostname = strings.TrimSpace(aHostname); 0 == len(aHostname) {
+		return nil, false
+	}
+	aHostname = strings.ToLower(aHostname)
 
-	if ce, ok := (*cl)[aHostname]; ok {
+	cl.RLock()
+	ce, ok := cl.Cache[aHostname]
+	cl.RUnlock()
+	if ok {
 		return ce.ips, true
 	}
 
@@ -209,10 +241,12 @@ func (cl *TCacheList) Len() int {
 		return 0
 	}
 
-	return len(*cl)
+	return len(cl.Cache)
 } // Len()
 
 // `SetEntry()` adds a new cache entry for the given hostname.
+//
+// If the given IP list is empty, the cache entry's IP list is cleared/removed.
 //
 // Parameters:
 //   - `aHostname`: The hostname to add a cache entry for.
@@ -222,15 +256,25 @@ func (cl *TCacheList) Len() int {
 // Returns:
 //   - `*TCacheList`: The updated cache list.
 func (cl *TCacheList) SetEntry(aHostname string, aIPs tIpList, aTTL time.Duration) *TCacheList {
-	if (nil == cl) || (nil == aIPs) || (0 == len(aIPs)) {
+	if nil == cl {
 		return cl
 	}
-
-	if ce, ok := (*cl)[aHostname]; ok {
-		(*cl)[aHostname] = ce.update(aIPs, aTTL)
-	} else {
-		(*cl)[aHostname] = newCacheEntry(aTTL).update(aIPs, aTTL)
+	if aHostname = strings.TrimSpace(aHostname); 0 == len(aHostname) {
+		return cl
 	}
+	aHostname = strings.ToLower(aHostname)
+
+	if 0 == len(cl.Cache) {
+		cl.Cache = make(map[string]*TCacheEntry, DefaultCacheSize)
+	}
+
+	cl.Lock()
+	if ce, ok := cl.Cache[aHostname]; ok {
+		cl.Cache[aHostname] = ce.Update(aIPs, aTTL)
+	} else {
+		cl.Cache[aHostname] = newCacheEntry(aTTL).Update(aIPs, aTTL)
+	}
+	cl.Unlock()
 
 	return cl
 } // SetEntry()
@@ -244,11 +288,13 @@ func (cl *TCacheList) String() string {
 	if nil == cl {
 		return ""
 	}
-
 	var builder strings.Builder
-	for host, ce := range *cl {
+
+	cl.RLock()
+	for host, ce := range cl.Cache {
 		fmt.Fprintf(&builder, "%s: %s\n", host, ce.String())
 	}
+	cl.RUnlock()
 
 	return builder.String()
 } // String()
