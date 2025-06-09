@@ -70,56 +70,6 @@ func init() {
 // ---------------------------------------------------------------------------
 // `tCacheNode` methods:
 
-// `Add()` adds a pattern to the node's tree.
-//
-// The method returns `true` if at least one part was added in order to
-// have the whole `aPartsList` present in the trie or found an existing
-// node that already represented the pattern (i.e. marked as end node
-// or wildcard).
-//
-// Parameters:
-//   - `aCtx`: The timeout context to use for the operation.
-//   - `aPartsList`: The list of parts of the pattern to Add.
-//   - `aIPs`: The list of IP addresses to store with the cache entry.
-//   - `aTTL`: Time to live for the cache entry.
-//
-// Returns:
-//   - `bool`: `true` if a pattern was added, `false` otherwise.
-func (cn *tCacheNode) Add(aCtx context.Context, aPartsList tPartsList, aIPs tIpList, aTTL time.Duration) (rOK bool) {
-	if (nil == cn) || (0 == len(aPartsList)) {
-		return
-	}
-	if 0 == aTTL {
-		aTTL = DefaultTTL
-	}
-
-	node, ok := cn, false
-	for depth, label := range aPartsList {
-		// Check for timeout or cancellation
-		if nil != aCtx.Err() {
-			return
-		}
-
-		// Create a new child node if it doesn't exist
-		if nil == node.tChildren {
-			node.tChildren = make(tChildren)
-			node.tChildren[label] = newNode()
-		} else if _, ok = node.tChildren[label]; !ok {
-			node.tChildren[label] = newNode()
-		}
-
-		// Descend into the child node
-		if node, ok = node.tChildren[label]; ok {
-			if (len(aPartsList) - 1) == depth {
-				node.Update(aIPs, aTTL)
-				rOK = true
-			}
-		}
-	}
-
-	return
-} // Add()
-
 // `allPatterns()` collects all hostname patterns in the node's tree.
 //
 // The method's result is returned in sorted order of the original
@@ -212,14 +162,14 @@ func (cn *tCacheNode) allPatterns(aCtx context.Context) (rList tPatternList) {
 	return
 } // allPatterns()
 
-// `count()` returns the number of nodes and patterns in the node's tree.
+// `count()` returns the number of nodes and patterns in the node's trie.
 //
 // Parameters:
 //   - `aCtx`: The timeout context to use for the operation.
 //
 // Returns:
-//   - `rNodes`: The number of nodes in the node's tree.
-//   - `rPatterns`: The number of patterns in the node's tree.
+//   - `rNodes`: The number of nodes in the node's trie.
+//   - `rPatterns`: The number of patterns in the node's trie.
 func (cn *tCacheNode) count(aCtx context.Context) (rNodes, rPatterns int) {
 	if nil == cn {
 		return
@@ -297,9 +247,56 @@ func (cn *tCacheNode) count(aCtx context.Context) (rNodes, rPatterns int) {
 	return
 } // count()
 
-// `Delete()` removes path patterns from the node's tree.
+// `Create()` inserts a pattern to the node's trie.
 //
-// The method returns `true` if a node was deleted, `false` otherwise.
+// The method returns `true` if at least one part was added in order to
+// have the whole `aPartsList` present in the trie or found an existing
+// node that already represented the pattern.
+//
+// Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
+//   - `aPartsList`: The list of parts of the pattern to create.
+//   - `aIPs`: The list of IP addresses to store with the cache entry.
+//   - `aTTL`: Time to live for the cache entry.
+//
+// Returns:
+//   - `bool`: `true` if a pattern was added, `false` otherwise.
+func (cn *tCacheNode) Create(aCtx context.Context, aPartsList tPartsList, aIPs tIpList, aTTL time.Duration) (rOK bool) {
+	if (nil == cn) || (0 == len(aPartsList)) {
+		return
+	}
+	if 0 == aTTL {
+		aTTL = DefaultTTL
+	}
+
+	node, ok := cn, false
+	for depth, label := range aPartsList {
+		// Check for timeout or cancellation
+		if nil != aCtx.Err() {
+			return
+		}
+
+		// Create a new child node if it doesn't exist
+		if nil == node.tChildren {
+			node.tChildren = make(tChildren)
+			node.tChildren[label] = newNode()
+		} else if _, ok = node.tChildren[label]; !ok {
+			node.tChildren[label] = newNode()
+		}
+
+		// Descend into the child node
+		if node, ok = node.tChildren[label]; ok {
+			if (len(aPartsList) - 1) == depth {
+				node.Update(aIPs, aTTL)
+				rOK = true
+			}
+		}
+	}
+
+	return
+} // Create()
+
+// `Delete()` removes path patterns from the node's trie.
 //
 // Parameters:
 //   - `aCtx`: The timeout context to use for the operation.
@@ -410,7 +407,7 @@ func (cn *tCacheNode) Equal(aNode *tCacheNode) (rOK bool) {
 	return
 } // Equal()
 
-// `expire()` removes expired cache entries from the node's tree.
+// `expire()` removes expired cache entries from the node's trie.
 //
 // Parameters:
 //   - `aCtx`: The timeout context to use for the operation.
@@ -561,7 +558,7 @@ func (cn *tCacheNode) isExpired() bool {
 	return cn.tCachedIP.bestBefore.Before(time.Now())
 } // isExpired()
 
-// `Match()` checks whether the node's tree contains the given pattern.
+// `Match()` checks whether the node's trie contains the given pattern.
 //
 // Parameters:
 //   - `aCtx`: The timeout context to use for the operation.
@@ -679,7 +676,7 @@ func (n *tCacheNode) merge(aCtx context.Context, aSrc *tCacheNode) *tCacheNode {
 } // merge()
 */
 
-// `Read()` returns the IP addresses for the given pattern.
+// `Retrieve()` returns the IP addresses for the given pattern.
 //
 // Parameters:
 //   - `aCtx`: The timeout context to use for the operation.
@@ -687,7 +684,7 @@ func (n *tCacheNode) merge(aCtx context.Context, aSrc *tCacheNode) *tCacheNode {
 //
 // Returns:
 //   - `rIPs`: The list of IP addresses for the given pattern.
-func (cn *tCacheNode) Read(aCtx context.Context, aPartsList tPartsList) (rIPs tIpList) {
+func (cn *tCacheNode) Retrieve(aCtx context.Context, aPartsList tPartsList) (rIPs tIpList) {
 	if (nil == cn) || (0 == len(aPartsList)) || (0 == len(cn.tChildren)) {
 		return
 	}
@@ -838,7 +835,7 @@ func (cn *tCacheNode) String() string {
 
 	// Buffer for the string representation's parts
 	var builder strings.Builder
-	cn.store(context.Background(), &builder)
+	_ = cn.store(context.Background(), &builder)
 
 	return builder.String()
 } // String()

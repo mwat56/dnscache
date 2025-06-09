@@ -7,6 +7,7 @@ Copyright © 2025  M.Watermann, 10247 Berlin, Germany
 package cache
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"slices"
@@ -25,16 +26,16 @@ func Test_tCacheEntry_clone(t *testing.T) {
 
 	tests := []struct {
 		name string
-		ce   *TCacheEntry
-		want *TCacheEntry
+		ce   *tCacheEntry
+		want *tCacheEntry
 	}{
 		{
 			name: "01 - clone",
-			ce: &TCacheEntry{
+			ce: &tCacheEntry{
 				ips:        tc1,
 				bestBefore: t1.Add(DefaultTTL),
 			},
-			want: &TCacheEntry{
+			want: &tCacheEntry{
 				ips:        tc1,
 				bestBefore: t1.Add(DefaultTTL),
 			},
@@ -46,11 +47,11 @@ func Test_tCacheEntry_clone(t *testing.T) {
 		},
 		{
 			name: "03 - clone empty",
-			ce: &TCacheEntry{
+			ce: &tCacheEntry{
 				ips:        nil,
 				bestBefore: t1.Add(DefaultTTL),
 			},
-			want: &TCacheEntry{
+			want: &tCacheEntry{
 				ips:        nil,
 				bestBefore: t1.Add(DefaultTTL),
 			},
@@ -62,97 +63,54 @@ func Test_tCacheEntry_clone(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got := tc.ce.clone()
+
 			if nil == got {
 				if nil != tc.want {
 					t.Error("tCacheEntry.clone() = nil, want non-nil")
 				}
 				return
 			}
-
 			if !tc.want.Equal(got) {
-				t.Errorf("tCacheEntry.clone() =\n%v\nwant\n%v",
+				t.Errorf("tCacheEntry.clone() =\n%q\nwant\n%q",
 					got, tc.want)
 			}
 		})
 	}
 } // Test_tCacheEntry_clone()
 
-func Test_tCacheEntry_Equal(t *testing.T) {
-	tc1 := tIpList{
-		net.ParseIP("192.168.1.1"),
-		net.ParseIP("192.168.1.2"),
+func Test_tCacheEntry_Create(t *testing.T) {
+	type tArgs struct {
+		aIPs tIpList
+		aTTL time.Duration
 	}
-	tc2 := tIpList{
-		net.ParseIP("192.168.1.3"),
-		net.ParseIP("192.168.1.4"),
-	}
-	tc3 := tIpList{
-		net.ParseIP("192.168.1.3"),
-		net.ParseIP("192.168.1.4"),
-		net.ParseIP("192.168.1.5"),
-	}
-	tc4 := &TCacheEntry{
-		ips: tc1,
-	}
-
 	tests := []struct {
 		name string
-		ce   *TCacheEntry
-		oc   *TCacheEntry
+		ce   *tCacheEntry
+		args tArgs
 		want bool
 	}{
 		{
-			name: "01 - equal",
-			ce: &TCacheEntry{
-				ips: tc1,
-			},
-			oc: &TCacheEntry{
-				ips: tc1,
+			name: "01 - create",
+			ce:   &tCacheEntry{},
+			args: tArgs{
+				aIPs: tIpList{
+					net.ParseIP("192.168.1.1"),
+					net.ParseIP("192.168.1.2"),
+				},
+				aTTL: time.Hour,
 			},
 			want: true,
 		},
 		{
-			name: "02 - not equal entries",
-			ce: &TCacheEntry{
-				ips: tc1,
-			},
-			oc: &TCacheEntry{
-				ips: tc2,
-			},
-			want: false,
-		},
-		{
-			name: "03 - not equal lists",
-			ce: &TCacheEntry{
-				ips: tc2,
-			},
-			oc: &TCacheEntry{
-				ips: tc3,
-			},
-			want: false,
-		},
-		{
-			name: "04 - same object",
-			ce:   tc4,
-			oc:   tc4,
-			want: true,
-		},
-		{
-			name: "05 - nil ce",
+			name: "02 - create nil",
 			ce:   nil,
-			oc:   &TCacheEntry{},
-			want: false,
-		},
-		{
-			name: "06 - nil other",
-			ce:   &TCacheEntry{},
-			oc:   nil,
-			want: false,
-		},
-		{
-			name: "07 - nil ce and oc",
-			ce:   nil,
-			oc:   nil,
+			args: tArgs{
+				aIPs: tIpList{
+					net.ParseIP("192.168.2.1"),
+					net.ParseIP("192.168.2.2"),
+				},
+				aTTL: time.Hour,
+			},
 			want: true,
 		},
 
@@ -161,7 +119,167 @@ func Test_tCacheEntry_Equal(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := tc.ce.Equal(tc.oc)
+			got := tc.ce.Create(context.Background(), nil, tc.args.aIPs, tc.args.aTTL)
+			if got != tc.want {
+				t.Errorf("tCacheEntry.Create() = '%v', want '%v'",
+					got, tc.want)
+			}
+		})
+	}
+} // Test_tCacheEntry_Create()
+
+func TestTCacheEntry_Delete(t *testing.T) {
+	type tArgs struct {
+		in0 context.Context
+		in1 tPartsList
+	}
+	tests := []struct {
+		name  string
+		entry *tCacheEntry
+		args  tArgs
+		want  bool
+	}{
+		{
+			name:  "01 - delete",
+			entry: &tCacheEntry{},
+			args:  tArgs{},
+			want:  true,
+		},
+		{
+			name:  "02 - delete nil",
+			entry: nil,
+			args:  tArgs{},
+			want:  true,
+		},
+
+		// TODO: Add test cases.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.entry.Delete(tc.args.in0, tc.args.in1)
+
+			if nil != tc.entry {
+				if !tc.entry.ips.Equal(tIpList{}) {
+					t.Error("TCacheEntry.Delete() did not clear IPs")
+				}
+				if !tc.entry.bestBefore.IsZero() {
+					t.Error("TCacheEntry.Delete() did not clear bestBefore")
+				}
+			}
+			if got != tc.want {
+				t.Errorf("TCacheEntry.Delete() = '%v', want '%v'",
+					got, tc.want)
+			}
+		})
+	}
+} // TestTCacheEntry_Delete()
+
+func Test_tCacheEntry_Equal(t *testing.T) {
+	ipl1 := tIpList{
+		net.ParseIP("192.168.1.1"),
+		net.ParseIP("192.168.1.2"),
+	}
+	ipl2 := tIpList{
+		net.ParseIP("192.168.2.3"),
+		net.ParseIP("192.168.2.4"),
+	}
+	ipl3 := tIpList{
+		net.ParseIP("192.168.3.3"),
+		net.ParseIP("192.168.3.4"),
+		net.ParseIP("192.168.3.5"),
+	}
+	ce4 := &tCacheEntry{
+		ips: ipl1,
+	}
+
+	tests := []struct {
+		name  string
+		ce    *tCacheEntry
+		other *tCacheEntry
+		want  bool
+	}{
+		{
+			name:  "01 - nil ce and oc",
+			ce:    nil,
+			other: nil,
+			want:  true,
+		},
+		{
+			name:  "02 - nil ce",
+			ce:    nil,
+			other: &tCacheEntry{},
+			want:  false,
+		},
+		{
+			name:  "03 - nil other",
+			ce:    &tCacheEntry{},
+			other: nil,
+			want:  false,
+		},
+		{
+			name: "04 - equal",
+			ce: &tCacheEntry{
+				ips: ipl1,
+			},
+			other: &tCacheEntry{
+				ips: ipl1,
+			},
+			want: true,
+		},
+		{
+			name: "05 - not equal entries",
+			ce: &tCacheEntry{
+				ips: ipl1,
+			},
+			other: &tCacheEntry{
+				ips: ipl2,
+			},
+			want: false,
+		},
+		{
+			name:  "06 - same object",
+			ce:    ce4,
+			other: ce4,
+			want:  true,
+		},
+		{
+			name: "07 - not equal lists",
+			ce: &tCacheEntry{
+				ips: nil,
+			},
+			other: &tCacheEntry{
+				ips: tIpList{},
+			},
+			want: false,
+		},
+		{
+			name: "08 - not equal lists",
+			ce: &tCacheEntry{
+				ips: ipl2,
+			},
+			other: &tCacheEntry{
+				ips: nil,
+			},
+			want: false,
+		},
+		{
+			name: "08 - not equal lists",
+			ce: &tCacheEntry{
+				ips: ipl2,
+			},
+			other: &tCacheEntry{
+				ips: ipl3,
+			},
+			want: false,
+		},
+
+		// TODO: Add test cases.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.ce.Equal(tc.other)
 			if got != tc.want {
 				t.Errorf("tCacheEntry.Equal() = '%v', want '%v'",
 					got, tc.want)
@@ -173,12 +291,12 @@ func Test_tCacheEntry_Equal(t *testing.T) {
 func Test_tCacheEntry_isExpired(t *testing.T) {
 	tests := []struct {
 		name        string
-		ce          *TCacheEntry
+		ce          *tCacheEntry
 		wantExpired bool
 	}{
 		{
 			name: "01 - expired",
-			ce: &TCacheEntry{
+			ce: &tCacheEntry{
 				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
@@ -189,14 +307,14 @@ func Test_tCacheEntry_isExpired(t *testing.T) {
 		},
 		{
 			name: "02 - expired (no IPs)",
-			ce: &TCacheEntry{
+			ce: &tCacheEntry{
 				bestBefore: time.Now().Add(time.Hour),
 			},
 			wantExpired: true,
 		},
 		{
 			name: "03 - expired at creation",
-			ce: &TCacheEntry{
+			ce: &tCacheEntry{
 				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
@@ -207,7 +325,7 @@ func Test_tCacheEntry_isExpired(t *testing.T) {
 		},
 		{
 			name: "04 - expired just now",
-			ce: &TCacheEntry{
+			ce: &tCacheEntry{
 				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
@@ -218,7 +336,7 @@ func Test_tCacheEntry_isExpired(t *testing.T) {
 		},
 		{
 			name: "05 - not expired yet",
-			ce: &TCacheEntry{
+			ce: &tCacheEntry{
 				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
@@ -229,7 +347,7 @@ func Test_tCacheEntry_isExpired(t *testing.T) {
 		},
 		{
 			name: "06 - expired in the future",
-			ce: &TCacheEntry{
+			ce: &tCacheEntry{
 				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
@@ -252,6 +370,74 @@ func Test_tCacheEntry_isExpired(t *testing.T) {
 	}
 } // Test_tCacheEntry_isExpired()
 
+func Test_tCacheEntry_Retrieve(t *testing.T) {
+	type tArgs struct {
+		in0 context.Context
+		in1 tPartsList
+	}
+	tests := []struct {
+		name string
+		ce   *tCacheEntry
+		args tArgs
+		want tIpList
+	}{
+		/* */
+		{
+			name: "01 - retrieve",
+			ce: &tCacheEntry{
+				ips: tIpList{
+					net.ParseIP("192.168.1.1"),
+					net.ParseIP("192.168.1.2"),
+				},
+			},
+			args: tArgs{},
+			want: tIpList{
+				net.ParseIP("192.168.1.1"),
+				net.ParseIP("192.168.1.2"),
+			},
+		},
+		{
+			name: "02 - retrieve nil",
+			ce:   nil,
+			args: tArgs{},
+			want: tIpList{},
+		},
+		{
+			name: "03 - retrieve empty",
+			ce: &tCacheEntry{
+				ips: nil,
+			},
+			args: tArgs{},
+			want: nil,
+		},
+		/* */
+
+		// TODO: Add test cases.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.ce.Retrieve(tc.args.in0, tc.args.in1)
+
+			if nil == got {
+				if nil != tc.want {
+					t.Error("tCacheEntry.Retrieve() = nil, want non-nil")
+				}
+				return
+			}
+			if nil == tc.want {
+				t.Errorf("tCacheEntry.Retrieve() =\n%q\nwant 'nil'",
+					got)
+				return
+			}
+			if !tc.want.Equal(got) {
+				t.Errorf("tCacheEntry.Retrieve() =\n%q\nwant\n%q",
+					got, tc.want)
+			}
+		})
+	}
+} // Test_tCacheEntry_Retrieve()
+
 func Test_tCacheEntry_String(t *testing.T) {
 	t1 := time.Now()
 	tc1 := tIpList{
@@ -259,13 +445,13 @@ func Test_tCacheEntry_String(t *testing.T) {
 		net.ParseIP("192.168.1.2"),
 		net.ParseIP("192.168.1.3"),
 	}
-	te1 := &TCacheEntry{
+	te1 := &tCacheEntry{
 		ips:        tc1,
 		bestBefore: t1.Add(time.Hour),
 	}
 	tests := []struct {
 		name string
-		ce   *TCacheEntry
+		ce   *tCacheEntry
 		want string
 	}{
 		{
@@ -282,7 +468,7 @@ func Test_tCacheEntry_String(t *testing.T) {
 		},
 		{
 			name: "03 - empty ce",
-			ce: &TCacheEntry{
+			ce: &tCacheEntry{
 				ips:        nil,
 				bestBefore: t1.Add(time.Hour),
 			},
@@ -305,13 +491,13 @@ func Test_tCacheEntry_String(t *testing.T) {
 func Test_tCacheEntry_update(t *testing.T) {
 	tests := []struct {
 		name   string
-		ce     *TCacheEntry
+		ce     *tCacheEntry
 		newIPs tIpList
-		wantCE *TCacheEntry
+		wantCE *tCacheEntry
 	}{
 		{
 			name: "01 - update with different IPs",
-			ce: &TCacheEntry{
+			ce: &tCacheEntry{
 				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
@@ -321,7 +507,7 @@ func Test_tCacheEntry_update(t *testing.T) {
 				net.ParseIP("192.168.1.3"),
 				net.ParseIP("192.168.1.4"),
 			},
-			wantCE: &TCacheEntry{
+			wantCE: &tCacheEntry{
 				ips: tIpList{
 					net.ParseIP("192.168.1.3"),
 					net.ParseIP("192.168.1.4"),
@@ -330,7 +516,7 @@ func Test_tCacheEntry_update(t *testing.T) {
 		},
 		{
 			name: "02 - update with same IPs",
-			ce: &TCacheEntry{
+			ce: &tCacheEntry{
 				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
@@ -340,7 +526,7 @@ func Test_tCacheEntry_update(t *testing.T) {
 				net.ParseIP("192.168.1.1"),
 				net.ParseIP("192.168.1.2"),
 			},
-			wantCE: &TCacheEntry{
+			wantCE: &tCacheEntry{
 				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
@@ -349,14 +535,14 @@ func Test_tCacheEntry_update(t *testing.T) {
 		},
 		{
 			name: "03 - update with nil IPs",
-			ce: &TCacheEntry{
+			ce: &tCacheEntry{
 				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
 				},
 			},
 			newIPs: nil,
-			wantCE: &TCacheEntry{
+			wantCE: &tCacheEntry{
 				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
@@ -365,14 +551,14 @@ func Test_tCacheEntry_update(t *testing.T) {
 		},
 		{
 			name: "04 - update with empty IPs",
-			ce: &TCacheEntry{
+			ce: &tCacheEntry{
 				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
 				},
 			},
 			newIPs: tIpList{},
-			wantCE: &TCacheEntry{
+			wantCE: &tCacheEntry{
 				ips: tIpList{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
@@ -385,13 +571,14 @@ func Test_tCacheEntry_update(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := tc.ce.update(tc.newIPs, time.Minute)
+			gotI := tc.ce.Update(tc.newIPs, time.Minute)
+			got := gotI.(*tCacheEntry)
 
 			ok := slices.EqualFunc(tc.ce.ips, got.ips, func(ip1, ip2 net.IP) bool {
 				return ip1.Equal(ip2)
 			})
 			if !ok {
-				t.Errorf("tCacheEntry.update() = '%v', want '%v'",
+				t.Errorf("tCacheEntry.Update() = '%v', want '%v'",
 					got, tc.wantCE)
 			}
 		})

@@ -57,7 +57,170 @@ func Test_newNode(t *testing.T) {
 	}
 } // Test_newNode()
 
-func Test_tCacheNode_Add(t *testing.T) {
+func Test_tCacheNode_allPatterns(t *testing.T) {
+	tests := []struct {
+		name     string
+		node     *tCacheNode
+		wantList tPatternList
+	}{
+		/* */
+		{
+			name:     "01 - nil node",
+			node:     nil,
+			wantList: nil,
+		},
+		{
+			name:     "02 - empty node",
+			node:     newNode(),
+			wantList: nil,
+		},
+		{
+			name: "03 - node with child, grandchild, wildcard, and child",
+			node: func() *tCacheNode {
+				n := newNode()
+				n.Create(context.TODO(), tPartsList{"tld", "domain", "sub", "*"},
+					tIpList{net.ParseIP("1.2.3.4"), net.ParseIP("2.3.4.5")}, 0)
+				return n
+			}(),
+			wantList: tPatternList{"*.sub.domain.tld"},
+		},
+		{
+			name: "04 - node with child, grandchild, wildcard, and child",
+			node: func() *tCacheNode {
+				n := newNode()
+				n.Create(context.TODO(), tPartsList{"tld", "domain", "sub", "*"},
+					tIpList{net.ParseIP("1.2.3.4"), net.ParseIP("2.3.4.5")}, 0)
+				n.Create(context.TODO(), tPartsList{"tld", "domain", "sub", "host"},
+					tIpList{net.ParseIP("3.4.5.6"), net.ParseIP("4.5.6.7")}, 0)
+				return n
+			}(),
+			wantList: tPatternList{"*.sub.domain.tld", "host.sub.domain.tld"},
+		},
+		{
+			name: "05 - node with child, grandchild, wildcard, and child",
+			node: func() *tCacheNode {
+				n := newNode()
+				n.Create(context.TODO(), tPartsList{"tld", "domain", "sub", "*"},
+					tIpList{net.ParseIP("1.2.3.4"), net.ParseIP("2.3.4.5")}, 0)
+				n.Create(context.TODO(), tPartsList{"tld", "domain", "sub", "host"},
+					tIpList{net.ParseIP("3.4.5.6"), net.ParseIP("4.5.6.7")}, 0)
+				n.Create(context.TODO(), tPartsList{"tld", "domain", "sub", "host", "sub"},
+					tIpList{net.ParseIP("5.6.7.8"), net.ParseIP("6.7.8.9")}, 0)
+				return n
+			}(),
+			wantList: tPatternList{"*.sub.domain.tld", "host.sub.domain.tld", "sub.host.sub.domain.tld"},
+		},
+		/* */
+		// TODO: Add test cases.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			gotList := tc.node.allPatterns(context.TODO())
+			if nil == gotList {
+				if nil != tc.wantList {
+					t.Error("tCacheNode.allPatterns() = nil, want non-nil")
+				}
+				return
+			}
+			if nil == tc.wantList {
+				t.Errorf("tCacheNode.allPatterns() =\n%q\nwant 'nil'",
+					gotList)
+				return
+			}
+			if !tc.wantList.Equal(gotList) {
+				t.Errorf("tCacheNode.allPatterns() =\n%q\nwant\n%q",
+					gotList, tc.wantList)
+			}
+		})
+	}
+} // Test_tCacheNode_allPatterns()
+
+func Test_tCacheNode_count(t *testing.T) {
+	tests := []struct {
+		name         string
+		node         *tCacheNode
+		wantNodes    int
+		wantPatterns int
+	}{
+		/* */
+		{
+			name:         "01 - empty node",
+			node:         &tCacheNode{},
+			wantNodes:    0,
+			wantPatterns: 0,
+		},
+		{
+			name:         "02 - new node",
+			node:         newNode(),
+			wantNodes:    0,
+			wantPatterns: 0,
+		},
+		{
+			name: "03 - one pattern",
+			node: func() *tCacheNode {
+				n := newNode()
+				n.Create(context.TODO(), tPartsList{"tld"},
+					tIpList{net.ParseIP("1.2.3.4"), net.ParseIP("1.2.3.4")}, 0)
+				return n
+			}(),
+			wantNodes:    1,
+			wantPatterns: 1,
+		},
+		{
+			name: "04 - two patterns",
+			node: func() *tCacheNode {
+				n := newNode()
+				n.Create(context.TODO(), tPartsList{"tld"},
+					tIpList{net.ParseIP("1.2.3.4"),
+						net.ParseIP("2.3.4.5")}, 0)
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
+					tIpList{net.ParseIP("3.4.5.6"),
+						net.ParseIP("4.5.6.7")}, 0)
+				return n
+			}(),
+			wantNodes:    2,
+			wantPatterns: 2,
+		},
+		{
+			name: "05 - three patterns",
+			node: func() *tCacheNode {
+				n := newNode()
+				n.Create(context.TODO(), tPartsList{"tld"},
+					tIpList{net.ParseIP("1.2.3.4"),
+						net.ParseIP("1.2.3.4")}, 0)
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
+					tIpList{net.ParseIP("1.2.3.4"),
+						net.ParseIP("1.2.3.4")}, 0)
+				n.Create(context.TODO(), tPartsList{"tld", "domain", "sub"},
+					tIpList{net.ParseIP("1.2.3.4"),
+						net.ParseIP("1.2.3.4")}, 0)
+				return n
+			}(),
+			wantNodes:    3,
+			wantPatterns: 3,
+		},
+		/* */
+		// TODO: Add test cases.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			gotNodes, gotPatterns := tc.node.count(context.TODO())
+
+			if gotNodes != tc.wantNodes {
+				t.Errorf("tCacheNode.count() gotNodes = %v, want %v",
+					gotNodes, tc.wantNodes)
+			}
+			if gotPatterns != tc.wantPatterns {
+				t.Errorf("tCacheNode.count() gotPatterns = %v, want %v",
+					gotPatterns, tc.wantPatterns)
+			}
+		})
+	}
+} // Test_tCacheNode_count()
+
+func Test_tCacheNode_Create(t *testing.T) {
 	tests := []struct {
 		name     string
 		node     *tCacheNode
@@ -119,7 +282,7 @@ func Test_tCacheNode_Add(t *testing.T) {
 			name: "08 - add existing FQDN",
 			node: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld", "domain", "host"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain", "host"},
 					tIpList{}, 0)
 				return n
 			}(),
@@ -133,178 +296,15 @@ func Test_tCacheNode_Add(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			gotOK := tc.node.Add(context.TODO(), tc.partList, tc.ips, 0)
+			gotOK := tc.node.Create(context.TODO(), tc.partList, tc.ips, 0)
 
 			if gotOK != tc.wantOK {
-				t.Errorf("tCacheNode.Add() = %v, want %v",
+				t.Errorf("tCacheNode.Create() = %v, want %v",
 					gotOK, tc.wantOK)
 			}
 		})
 	}
-} // Test_tCacheNode_Add()
-
-func Test_tCacheNode_allPatterns(t *testing.T) {
-	tests := []struct {
-		name     string
-		node     *tCacheNode
-		wantList tPatternList
-	}{
-		/* */
-		{
-			name:     "01 - nil node",
-			node:     nil,
-			wantList: nil,
-		},
-		{
-			name:     "02 - empty node",
-			node:     newNode(),
-			wantList: nil,
-		},
-		{
-			name: "03 - node with child, grandchild, wildcard, and child",
-			node: func() *tCacheNode {
-				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld", "domain", "sub", "*"},
-					tIpList{net.ParseIP("1.2.3.4"), net.ParseIP("2.3.4.5")}, 0)
-				return n
-			}(),
-			wantList: tPatternList{"*.sub.domain.tld"},
-		},
-		{
-			name: "04 - node with child, grandchild, wildcard, and child",
-			node: func() *tCacheNode {
-				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld", "domain", "sub", "*"},
-					tIpList{net.ParseIP("1.2.3.4"), net.ParseIP("2.3.4.5")}, 0)
-				n.Add(context.TODO(), tPartsList{"tld", "domain", "sub", "host"},
-					tIpList{net.ParseIP("3.4.5.6"), net.ParseIP("4.5.6.7")}, 0)
-				return n
-			}(),
-			wantList: tPatternList{"*.sub.domain.tld", "host.sub.domain.tld"},
-		},
-		{
-			name: "05 - node with child, grandchild, wildcard, and child",
-			node: func() *tCacheNode {
-				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld", "domain", "sub", "*"},
-					tIpList{net.ParseIP("1.2.3.4"), net.ParseIP("2.3.4.5")}, 0)
-				n.Add(context.TODO(), tPartsList{"tld", "domain", "sub", "host"},
-					tIpList{net.ParseIP("3.4.5.6"), net.ParseIP("4.5.6.7")}, 0)
-				n.Add(context.TODO(), tPartsList{"tld", "domain", "sub", "host", "sub"},
-					tIpList{net.ParseIP("5.6.7.8"), net.ParseIP("6.7.8.9")}, 0)
-				return n
-			}(),
-			wantList: tPatternList{"*.sub.domain.tld", "host.sub.domain.tld", "sub.host.sub.domain.tld"},
-		},
-		/* */
-		// TODO: Add test cases.
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			gotList := tc.node.allPatterns(context.TODO())
-			if nil == gotList {
-				if nil != tc.wantList {
-					t.Error("tCacheNode.allPatterns() = nil, want non-nil")
-				}
-				return
-			}
-			if nil == tc.wantList {
-				t.Errorf("tCacheNode.allPatterns() =\n%q\nwant 'nil'",
-					gotList)
-				return
-			}
-			if !tc.wantList.Equal(gotList) {
-				t.Errorf("tCacheNode.allPatterns() =\n%q\nwant\n%q",
-					gotList, tc.wantList)
-			}
-		})
-	}
-} // Test_tCacheNode_allPatterns()
-
-func Test_tCacheNode_count(t *testing.T) {
-	tests := []struct {
-		name         string
-		node         *tCacheNode
-		wantNodes    int
-		wantPatterns int
-	}{
-		/* */
-		{
-			name:         "01 - empty node",
-			node:         &tCacheNode{},
-			wantNodes:    0,
-			wantPatterns: 0,
-		},
-		{
-			name:         "02 - new node",
-			node:         newNode(),
-			wantNodes:    0,
-			wantPatterns: 0,
-		},
-		{
-			name: "03 - one pattern",
-			node: func() *tCacheNode {
-				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld"},
-					tIpList{net.ParseIP("1.2.3.4"), net.ParseIP("1.2.3.4")}, 0)
-				return n
-			}(),
-			wantNodes:    1,
-			wantPatterns: 1,
-		},
-		{
-			name: "04 - two patterns",
-			node: func() *tCacheNode {
-				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld"},
-					tIpList{net.ParseIP("1.2.3.4"),
-						net.ParseIP("2.3.4.5")}, 0)
-				n.Add(context.TODO(), tPartsList{"tld", "domain"},
-					tIpList{net.ParseIP("3.4.5.6"),
-						net.ParseIP("4.5.6.7")}, 0)
-				return n
-			}(),
-			wantNodes:    2,
-			wantPatterns: 2,
-		},
-		{
-			name: "05 - three patterns",
-			node: func() *tCacheNode {
-				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld"},
-					tIpList{net.ParseIP("1.2.3.4"),
-						net.ParseIP("1.2.3.4")}, 0)
-				n.Add(context.TODO(), tPartsList{"tld", "domain"},
-					tIpList{net.ParseIP("1.2.3.4"),
-						net.ParseIP("1.2.3.4")}, 0)
-				n.Add(context.TODO(), tPartsList{"tld", "domain", "sub"},
-					tIpList{net.ParseIP("1.2.3.4"),
-						net.ParseIP("1.2.3.4")}, 0)
-				return n
-			}(),
-			wantNodes:    3,
-			wantPatterns: 3,
-		},
-		/* */
-		// TODO: Add test cases.
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			gotNodes, gotPatterns := tc.node.count(context.TODO())
-
-			if gotNodes != tc.wantNodes {
-				t.Errorf("tCacheNode.count() gotNodes = %v, want %v",
-					gotNodes, tc.wantNodes)
-			}
-			if gotPatterns != tc.wantPatterns {
-				t.Errorf("tCacheNode.count() gotPatterns = %v, want %v",
-					gotPatterns, tc.wantPatterns)
-			}
-		})
-	}
-} // Test_tCacheNode_count()
+} // Test_tCacheNode_Create()
 
 func Test_tCacheNode_Delete(t *testing.T) {
 	tests := []struct {
@@ -342,7 +342,7 @@ func Test_tCacheNode_Delete(t *testing.T) {
 			name: "05 - delete existing part",
 			node: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld"},
+				n.Create(context.TODO(), tPartsList{"tld"},
 					tIpList{net.ParseIP("1.2.3.4"),
 						net.ParseIP("1.2.3.4")}, 0)
 				return n
@@ -354,8 +354,8 @@ func Test_tCacheNode_Delete(t *testing.T) {
 			name: "06 - delete existing part with child",
 			node: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld"}, tIpList{}, 0)
-				n.Add(context.TODO(), tPartsList{"tld", "domain"},
+				n.Create(context.TODO(), tPartsList{"tld"}, tIpList{}, 0)
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
 					tIpList{net.ParseIP("1.2.3.4"),
 						net.ParseIP("1.2.3.4")}, 0)
 				return n
@@ -367,12 +367,12 @@ func Test_tCacheNode_Delete(t *testing.T) {
 			name: "07 - delete existing part with child but leave child",
 			node: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld"},
+				n.Create(context.TODO(), tPartsList{"tld"},
 					tIpList{}, 0)
-				n.Add(context.TODO(), tPartsList{"tld", "domain"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
 					tIpList{net.ParseIP("1.2.3.4"),
 						net.ParseIP("1.2.3.4")}, 0)
-				n.Add(context.TODO(), tPartsList{"tld", "domain", "host"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain", "host"},
 					tIpList{net.ParseIP("2.3.4.5"),
 						net.ParseIP("3.4.5.6")}, 0)
 				return n
@@ -384,9 +384,9 @@ func Test_tCacheNode_Delete(t *testing.T) {
 			name: "08 - delete existing part with child and delete child",
 			node: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld"},
+				n.Create(context.TODO(), tPartsList{"tld"},
 					tIpList{}, 0)
-				n.Add(context.TODO(), tPartsList{"tld", "domain"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
 					tIpList{net.ParseIP("1.2.3.4"),
 						net.ParseIP("2.3.4.5")}, 0)
 				return n
@@ -398,11 +398,11 @@ func Test_tCacheNode_Delete(t *testing.T) {
 			name: "09 - delete existing part but leave parent",
 			node: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld"},
+				n.Create(context.TODO(), tPartsList{"tld"},
 					tIpList{net.ParseIP("1.2.3.4")}, 0)
-				n.Add(context.TODO(), tPartsList{"tld", "domain"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
 					tIpList{net.ParseIP("2.3.4.5")}, 0)
-				n.Add(context.TODO(), tPartsList{"tld", "domain", "host"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain", "host"},
 					tIpList{net.ParseIP("3.4.5.6")}, 0)
 				return n
 			}(),
@@ -499,17 +499,17 @@ func Test_tCacheNode_Equal(t *testing.T) {
 			name: "10 - equivalent object",
 			node: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld"},
+				n.Create(context.TODO(), tPartsList{"tld"},
 					tIpList{net.ParseIP("1.2.3.4")}, 0)
-				n.Add(context.TODO(), tPartsList{"tld", "domain"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
 					tIpList{net.ParseIP("2.3.4.5")}, 0)
 				return n
 			}(),
 			other: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld", "domain"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
 					tIpList{net.ParseIP("2.3.4.5")}, 0)
-				n.Add(context.TODO(), tPartsList{"tld"},
+				n.Create(context.TODO(), tPartsList{"tld"},
 					tIpList{net.ParseIP("1.2.3.4")}, 0)
 				return n
 			}(),
@@ -549,7 +549,7 @@ func Test_tCacheNode_expire(t *testing.T) {
 			name: "03 - expired node",
 			node: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld"},
+				n.Create(context.TODO(), tPartsList{"tld"},
 					tIpList{net.ParseIP("1.2.3.4")}, -time.Hour)
 				return n
 			}(),
@@ -559,7 +559,7 @@ func Test_tCacheNode_expire(t *testing.T) {
 			name: "04 - non-expired node",
 			node: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld"},
+				n.Create(context.TODO(), tPartsList{"tld"},
 					tIpList{net.ParseIP("1.2.3.4")}, time.Hour)
 				return n
 			}(),
@@ -569,7 +569,7 @@ func Test_tCacheNode_expire(t *testing.T) {
 			name: "05 - expired child",
 			node: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld", "domain"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
 					tIpList{net.ParseIP("1.2.3.4")}, -time.Hour)
 				return n
 			}(),
@@ -579,7 +579,7 @@ func Test_tCacheNode_expire(t *testing.T) {
 			name: "06 - non-expired child",
 			node: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld", "domain", "host"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain", "host"},
 					tIpList{net.ParseIP("1.2.3.4")}, time.Hour)
 				return n
 			}(),
@@ -589,11 +589,11 @@ func Test_tCacheNode_expire(t *testing.T) {
 			name: "07 - expired child, non-expired grandchild",
 			node: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld"},
+				n.Create(context.TODO(), tPartsList{"tld"},
 					tIpList{net.ParseIP("1.2.3.4")}, time.Hour)
-				n.Add(context.TODO(), tPartsList{"tld", "domain"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
 					tIpList{net.ParseIP("2.3.4.5")}, -time.Hour)
-				n.Add(context.TODO(), tPartsList{"tld", "domain", "host"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain", "host"},
 					tIpList{net.ParseIP("3.4.5.6")}, time.Hour)
 				return n
 			}(),
@@ -603,11 +603,11 @@ func Test_tCacheNode_expire(t *testing.T) {
 			name: "08 - expired parent, non-expired child & grandchild",
 			node: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld"},
+				n.Create(context.TODO(), tPartsList{"tld"},
 					tIpList{net.ParseIP("1.2.3.4")}, -time.Hour)
-				n.Add(context.TODO(), tPartsList{"tld", "domain"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
 					tIpList{net.ParseIP("2.3.4.5")}, time.Hour)
-				n.Add(context.TODO(), tPartsList{"tld", "domain", "host"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain", "host"},
 					tIpList{net.ParseIP("3.4.5.6")}, time.Hour)
 				return n
 			}(),
@@ -617,11 +617,11 @@ func Test_tCacheNode_expire(t *testing.T) {
 			name: "09 - expired child, non-expired parent & grandchild",
 			node: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld"},
+				n.Create(context.TODO(), tPartsList{"tld"},
 					tIpList{net.ParseIP("1.2.3.4")}, time.Hour)
-				n.Add(context.TODO(), tPartsList{"tld", "domain"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
 					tIpList{net.ParseIP("2.3.4.5")}, -time.Hour)
-				n.Add(context.TODO(), tPartsList{"tld", "domain", "host"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain", "host"},
 					tIpList{net.ParseIP("3.4.5.6")}, time.Hour)
 				return n
 			}(),
@@ -679,7 +679,7 @@ func Test_tCacheNode_Match(t *testing.T) {
 			name: "05 - match existing part",
 			node: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld"},
+				n.Create(context.TODO(), tPartsList{"tld"},
 					tIpList{net.ParseIP("1.2.3.4")}, 0)
 				return n
 			}(),
@@ -690,8 +690,8 @@ func Test_tCacheNode_Match(t *testing.T) {
 			name: "06 - match existing part with child",
 			node: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld"}, tIpList{}, 0)
-				n.Add(context.TODO(), tPartsList{"tld", "domain"},
+				n.Create(context.TODO(), tPartsList{"tld"}, tIpList{}, 0)
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
 					tIpList{net.ParseIP("2.3.4.5")}, 0)
 				return n
 			}(),
@@ -702,9 +702,9 @@ func Test_tCacheNode_Match(t *testing.T) {
 			name: "07 - match existing part with child and grandchild",
 			node: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld"}, tIpList{}, 0)
-				n.Add(context.TODO(), tPartsList{"tld", "domain"}, tIpList{}, 0)
-				n.Add(context.TODO(), tPartsList{"tld", "domain", "host"},
+				n.Create(context.TODO(), tPartsList{"tld"}, tIpList{}, 0)
+				n.Create(context.TODO(), tPartsList{"tld", "domain"}, tIpList{}, 0)
+				n.Create(context.TODO(), tPartsList{"tld", "domain", "host"},
 					tIpList{net.ParseIP("3.4.5.6")}, 0)
 				return n
 			}(),
@@ -763,7 +763,7 @@ func Test_tCacheNode_Read(t *testing.T) {
 			name: "05 - existing part",
 			node: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld"},
+				n.Create(context.TODO(), tPartsList{"tld"},
 					tIpList{net.ParseIP("1.2.3.4")}, 0)
 				return n
 			}(),
@@ -776,7 +776,7 @@ func Test_tCacheNode_Read(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			gotIPs := tc.node.Read(context.TODO(), tc.partList)
+			gotIPs := tc.node.Retrieve(context.TODO(), tc.partList)
 			if nil == gotIPs {
 				if nil != tc.wantIPs {
 					t.Error("tCacheNode.Read() = nil, want non-nil")
@@ -820,7 +820,7 @@ func Test_tCacheNode_store(t *testing.T) {
 			name: "03 - node with child",
 			node: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld", "domain"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
 					tIpList{net.ParseIP("1.2.3.4")}, 0)
 				return n
 			}(),
@@ -831,9 +831,9 @@ func Test_tCacheNode_store(t *testing.T) {
 			name: "04 - node with child and grandchild",
 			node: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld", "domain"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
 					tIpList{net.ParseIP("1.2.3.4")}, 0)
-				n.Add(context.TODO(), tPartsList{"tld", "domain", "host"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain", "host"},
 					tIpList{net.ParseIP("2.3.4.5")}, 0)
 				return n
 			}(),
@@ -844,9 +844,9 @@ func Test_tCacheNode_store(t *testing.T) {
 			name: "05 - node with child and grandchild with multiple IPs",
 			node: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld", "domain"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
 					tIpList{net.ParseIP("1.2.3.4"), net.ParseIP("5.6.7.8")}, 0)
-				n.Add(context.TODO(), tPartsList{"tld", "domain", "host"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain", "host"},
 					tIpList{net.ParseIP("2.3.4.5"), net.ParseIP("6.7.8.9")}, 0)
 				return n
 			}(),
@@ -906,7 +906,7 @@ func Test_tCacheNode_Update(t *testing.T) {
 			name: "03 - update empty IPs",
 			node: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld", "domain"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
 					tIpList{net.ParseIP("1.2.3.4")}, 0)
 				return n
 			}(),
@@ -914,7 +914,7 @@ func Test_tCacheNode_Update(t *testing.T) {
 			ttl: time.Minute,
 			want: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld", "domain"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
 					tIpList{}, 0)
 				return n
 			}(),
@@ -923,7 +923,7 @@ func Test_tCacheNode_Update(t *testing.T) {
 			name: "04 - update with nil IPs",
 			node: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld", "domain"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
 					tIpList{net.ParseIP("1.2.3.4")}, 0)
 				return n
 			}(),
@@ -931,7 +931,7 @@ func Test_tCacheNode_Update(t *testing.T) {
 			ttl: time.Minute,
 			want: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld", "domain"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
 					tIpList{}, 0)
 				return n
 			}(),
@@ -940,7 +940,7 @@ func Test_tCacheNode_Update(t *testing.T) {
 			name: "05 - update with different IPs",
 			node: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld", "domain"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
 					tIpList{net.ParseIP("1.2.3.4")}, 0)
 				return n
 			}(),
@@ -948,7 +948,7 @@ func Test_tCacheNode_Update(t *testing.T) {
 			ttl: time.Minute,
 			want: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld", "domain"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
 					tIpList{net.ParseIP("5.6.7.8")}, 0)
 				return n
 			}(),
@@ -957,7 +957,7 @@ func Test_tCacheNode_Update(t *testing.T) {
 			name: "06 - update with different TTL",
 			node: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld", "domain"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
 					tIpList{net.ParseIP("1.2.3.4")}, 0)
 				return n
 			}(),
@@ -965,7 +965,7 @@ func Test_tCacheNode_Update(t *testing.T) {
 			ttl: 2 * time.Minute,
 			want: func() *tCacheNode {
 				n := newNode()
-				n.Add(context.TODO(), tPartsList{"tld", "domain"},
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
 					tIpList{net.ParseIP("1.2.3.4")}, 0)
 				return n
 			}(),

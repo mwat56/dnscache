@@ -156,7 +156,7 @@ func (tl *TTrieList) IPs(aHostname string) (tIpList, bool) {
 	}
 
 	tl.RLock()
-	ips := tl.node.Read(context.TODO(), pattern2parts(aHostname))
+	ips := tl.node.Retrieve(context.TODO(), pattern2parts(aHostname))
 	tl.RUnlock()
 
 	return ips, (0 < len(ips))
@@ -194,7 +194,7 @@ func (tl *TTrieList) SetEntry(aHostname string, aIPs tIpList, aTTL time.Duration
 
 	parts := pattern2parts(aHostname)
 	tl.Lock()
-	tl.node.Add(context.TODO(), parts, aIPs, aTTL)
+	tl.node.Create(context.TODO(), parts, aIPs, aTTL)
 	tl.Unlock()
 
 	return tl

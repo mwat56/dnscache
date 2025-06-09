@@ -15,14 +15,14 @@ import (
 
 type (
 	// `iCacheNode` is the basic interface for a node in a cache trie.
-	// It provides a CRUD interface for cache nodes:
+	// It provides a CRUD interface for caching nodes:
 	//
-	//   - `C`: Create a new hostname's data cache [Add],
-	//   - `R`: Retrieve a hostname's cached data [Read],
+	//   - `C`: Create a new hostname's data cache [Create],
+	//   - `R`: Retrieve a hostname's cached data [Retrieve],
 	//   - `U`: Update a hostname's cached data [Update],
 	//   - `D`: Delete a hostname's cached data [Delete].
 	iCacheNode interface {
-		// `Add()` inserts a hostname pattern into the node's trie.
+		// `Create()` inserts a hostname pattern into cache.
 		//
 		// The method returns `true` if at least one part of the
 		// hostname pattern was added in order to have the whole
@@ -37,12 +37,12 @@ type (
 		//
 		// Returns:
 		//   - `bool`: `true` if a pattern was added, `false` otherwise.
-		Add(context.Context, tPartsList, tIpList, time.Duration) bool
+		Create(context.Context, tPartsList, tIpList, time.Duration) bool
 
 		// `Delete()` removes a hostname pattern from the node's trie.
 		//
 		// The method returns `true` if at least one part of the
-		// hostname's path is deleted, `false` otherwise.
+		// hostname's path was deleted, `false` otherwise.
 		//
 		// Parameters:
 		//   - `context.Context`: The timeout context to use for the operation.
@@ -52,7 +52,7 @@ type (
 		//   - `bool`: `true` if a node was deleted, `false` otherwise.
 		Delete(context.Context, tPartsList) bool
 
-		// `Read()` returns the IP addresses for the given hostname pattern.
+		// `Retrieve()` returns the IP addresses for the given hostname pattern.
 		//
 		// Parameters:
 		//   - `context.Context`: The timeout context to use for the operation.
@@ -60,7 +60,7 @@ type (
 		//
 		// Returns:
 		//   - `tIpList`: The list of IP addresses for the given pattern.
-		Read(context.Context, tPartsList) tIpList
+		Retrieve(context.Context, tPartsList) tIpList
 
 		// `Update()` updates the cache entry with the given IP addresses.
 		//

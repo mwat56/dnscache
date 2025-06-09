@@ -7,6 +7,7 @@ Copyright © 2025  M.Watermann, 10247 Berlin, Germany
 package cache
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strings"
@@ -25,46 +26,33 @@ const (
 )
 
 type (
-	// `TCacheEntry` is a DNS cache entry.
-	TCacheEntry struct {
+	// `tCacheEntry` is a DNS cache entry.
+	tCacheEntry struct {
 		ips        tIpList   // IP addresses for this entry
 		bestBefore time.Time // time after which the entry is not valid
 	}
 )
 
-// ---------------------------------------------------------------------------
-// `TCacheEntry` constructor:
-
-// `newCacheEntry()` returns a new cache entry with the given TTL.
-//
-// Parameters:
-//   - `aTTL`: Time to live for the cache entry.
-//
-// Returns:
-//   - `*TCacheEntry`: A new cache entry.
-func newCacheEntry(aTTL time.Duration) *TCacheEntry {
-	if 0 == aTTL {
-		aTTL = DefaultTTL
-	}
-
-	return &TCacheEntry{
-		bestBefore: time.Now().Add(aTTL),
-	}
-} // newCacheEntry()
+// `init()` ensures proper interface implementation.
+func init() {
+	var (
+		_ iCacheNode = (*tCacheEntry)(nil)
+	)
+} // init()
 
 // ---------------------------------------------------------------------------
-// `TCacheEntry` methods:
+// `tCacheEntry` methods:
 
 // `clone()` returns a deep copy of the cache entry.
 //
 // Returns:
-//   - `*TCacheEntry`: A deep copy of the cache entry.
-func (ce *TCacheEntry) clone() *TCacheEntry {
+//   - `*tCacheEntry`: A deep copy of the cache entry.
+func (ce *tCacheEntry) clone() *tCacheEntry {
 	if nil == ce {
 		return nil
 	}
 
-	result := &TCacheEntry{
+	result := &tCacheEntry{
 		bestBefore: ce.bestBefore,
 	}
 	if (nil != ce.ips) && (0 < len(ce.ips)) {
@@ -75,6 +63,52 @@ func (ce *TCacheEntry) clone() *TCacheEntry {
 	return result
 } // clone()
 
+// `Create()` creates a cache entry with the given IP addresses and TTL.
+//
+// If the cache entry already exists, it is updated with the given IP
+// addresses and TTL.
+//
+// NOTE: This method's implementation ignores both, the `aCtx` and
+// `aPartsList` arguments required by the `iCacheNode` interface.
+//
+// Parameters:
+//   - `context.Context`: The timeout context to use for the operation.
+//   - `tPartsList`: The list of parts of the hostname to use.
+//   - `tIpList`: List of IP addresses to store with the cache entry.
+//   - `time.Duration`: Time to live for the cache entry.
+//
+// Returns:
+//   - `bool`: `true` if the cache entry was created, `false` otherwise.
+func (ce *tCacheEntry) Create(aCtx context.Context, aPartsList tPartsList, aIPs tIpList, aTTL time.Duration) bool {
+	if nil == ce {
+		ce = &tCacheEntry{}
+	}
+	ce = ce.Update(aIPs, aTTL).(*tCacheEntry)
+
+	return (nil != ce)
+} // Create()
+
+// `Delete()` clears the cache entry by zeroing the IP list and the
+// expiration time.
+//
+// NOTE: This method's implementation ignores both, the `Context` and
+// `tPartsList` arguments required by the `iCacheNode` interface.`
+//
+// Parameters:
+//   - `context.Context`: The timeout context to use for the operation.
+//   - `tPartsList`: List of parts of the hostname pattern to delete.
+//
+// Returns:
+//   - `bool`: `true` if a node was deleted, `false` otherwise.
+func (ce *tCacheEntry) Delete(context.Context, tPartsList) bool {
+	if nil != ce {
+		ce.ips = tIpList{}
+		ce.bestBefore = time.Time{}
+	}
+
+	return true
+} // Delete()
+
 // `Equal()` checks whether the cache entry is equal to the given one.
 //
 // Note: The `bestBefore` field is not compared.
@@ -84,7 +118,7 @@ func (ce *TCacheEntry) clone() *TCacheEntry {
 //
 // Returns:
 //   - `bool`: `true` if the cache entry is equal to the given one, `false` otherwise.
-func (ce *TCacheEntry) Equal(aEntry *TCacheEntry) bool {
+func (ce *tCacheEntry) Equal(aEntry *tCacheEntry) bool {
 	if nil == ce {
 		return (nil == aEntry)
 	}
@@ -105,7 +139,7 @@ func (ce *TCacheEntry) Equal(aEntry *TCacheEntry) bool {
 	}
 
 	// Do NOT compare the `bestBefore` field because even nanoseconds
-	// make a differences.
+	// would make a difference.
 
 	return ce.ips.Equal(aEntry.ips)
 } // Equal()
@@ -114,7 +148,7 @@ func (ce *TCacheEntry) Equal(aEntry *TCacheEntry) bool {
 //
 // Returns:
 //   - `net.IP`: First IP address in the cache entry.
-func (ce *TCacheEntry) First() net.IP {
+func (ce *tCacheEntry) First() net.IP {
 	if nil == ce {
 		return nil
 	}
@@ -126,7 +160,7 @@ func (ce *TCacheEntry) First() net.IP {
 //
 // Returns:
 //   - `bool`: `true` if the cache entry is expired, `false` otherwise.
-func (ce *TCacheEntry) isExpired() bool {
+func (ce *tCacheEntry) isExpired() bool {
 	if (nil == ce) || (0 == len(ce.ips)) {
 		return true
 	}
@@ -138,7 +172,7 @@ func (ce *TCacheEntry) isExpired() bool {
 //
 // Returns:
 //   - `int`: Number of IP addresses in the cache entry.
-func (ce *TCacheEntry) Len() int {
+func (ce *tCacheEntry) Len() int {
 	if nil == ce {
 		return 0
 	}
@@ -146,11 +180,26 @@ func (ce *TCacheEntry) Len() int {
 	return ce.ips.Len()
 } // Len()
 
+// `Retrieve()` returns the IP addresses cached by this cache entry.
+//
+// NOTE: This method's implementation ignores both, the `Context` and
+// `tPartsList` arguments required by the `iCacheNode` interface.`
+//
+// Returns:
+//   - `tIpList`: The list of IP addresses for the given pattern.
+func (ce *tCacheEntry) Retrieve(context.Context, tPartsList) tIpList {
+	if nil == ce {
+		return tIpList{}
+	}
+
+	return ce.ips
+} // Retrieve()
+
 // `String()` implements the `fmt.Stringer` interface for the cache entry.
 //
 // Returns:
 //   - `string`: String representation of the cache entry.
-func (ce *TCacheEntry) String() string {
+func (ce *tCacheEntry) String() string {
 	if nil == ce {
 		return ""
 	}
@@ -165,36 +214,41 @@ func (ce *TCacheEntry) String() string {
 	return builder.String()
 } // String()
 
-// `update()` updates the cache entry with the given IP addresses.
+// `Update()` updates the cache entry with the given IP addresses returning
+// the updated cache entry.
+//
+// If the given IP list is empty, the cache entry's IP list is cleared/removed.
 //
 // Parameters:
-//   - `aIPs`: List of IP addresses to update the cache entry with.
+//   - `aIPs`: List of IP addresses to Update the cache entry with.
 //   - `aTTL`: Time to live for the cache entry.
 //
 // Returns:
-//   - `*TCacheEntry`: The updated cache entry.
-func (ce *TCacheEntry) update(aIPs tIpList, aTTL time.Duration) *TCacheEntry {
-	if (nil == ce) || (nil == aIPs) || (0 == len(aIPs)) {
+//   - `iCacheNode`: The updated cache entry.
+func (ce *tCacheEntry) Update(aIPs tIpList, aTTL time.Duration) iCacheNode {
+	if nil == ce {
+		return nil
+	}
+	if ce.ips.Equal(aIPs) {
 		return ce
 	}
 	if 0 == aTTL {
 		aTTL = DefaultTTL
 	}
 
-	if !ce.ips.Equal(aIPs) {
-		if iLen := len(aIPs); 0 < iLen {
-			// Assume ownership of `aIPs`
-			ce.ips = make(tIpList, iLen)
-			copy(ce.ips, aIPs)
-		} else {
-			ce.ips = tIpList{}
-		}
+	if iLen := len(aIPs); 0 < iLen {
+		// Assume ownership of `aIPs`
+		ce.ips = make(tIpList, iLen)
+		copy(ce.ips, aIPs)
+
+		// Update expiration time
+		ce.bestBefore = time.Now().Add(aTTL)
+	} else {
+		ce.ips = tIpList{}
+		ce.bestBefore = time.Time{}
 	}
 
-	// Update expiration time:
-	ce.bestBefore = time.Now().Add(aTTL)
-
 	return ce
-} // update()
+} // Update()
 
 /* _EoF_ */

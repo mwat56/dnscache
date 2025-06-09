@@ -7,6 +7,7 @@ Copyright © 2025  M.Watermann, 10247 Berlin, Germany
 package cache
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"runtime"
@@ -27,7 +28,7 @@ type (
 	// indexed by lowercased hostnames.
 	TCacheList struct {
 		sync.RWMutex
-		Cache map[string]*TCacheEntry
+		Cache map[string]*tCacheEntry
 	}
 )
 
@@ -49,7 +50,7 @@ func New(aSize uint) *TCacheList {
 	}
 
 	return &TCacheList{
-		Cache: make(map[string]*TCacheEntry, aSize),
+		Cache: make(map[string]*tCacheEntry, aSize),
 	}
 } // New()
 
@@ -89,7 +90,7 @@ func (cl *TCacheList) Clone() *TCacheList {
 	}
 
 	result := &TCacheList{
-		Cache: make(map[string]*TCacheEntry, len(cl.Cache)),
+		Cache: make(map[string]*tCacheEntry, len(cl.Cache)),
 	}
 	cl.RLock()
 	for host, ce := range cl.Cache {
@@ -117,7 +118,10 @@ func (cl *TCacheList) Delete(aHostname string) *TCacheList {
 	aHostname = strings.ToLower(aHostname)
 
 	cl.Lock()
-	delete(cl.Cache, aHostname)
+	if ce, ok := cl.Cache[aHostname]; ok {
+		ce.Delete(context.Background(), nil)
+		delete(cl.Cache, aHostname)
+	}
 	cl.Unlock()
 
 	return cl
@@ -141,7 +145,7 @@ func (cl *TCacheList) Equal(aList *TCacheList) bool {
 		return false
 	}
 	var (
-		otherEntry *TCacheEntry
+		otherEntry *tCacheEntry
 		ok         bool = true
 	)
 
@@ -189,7 +193,7 @@ func (cl *TCacheList) expireEntries() {
 // Returns:
 //   - `*tCacheEntry`: The cache entry for the given hostname.
 //   - `bool`: `true` if the hostname was found in the cache, `false` otherwise.
-func (cl *TCacheList) GetEntry(aHostname string) (*TCacheEntry, bool) {
+func (cl *TCacheList) GetEntry(aHostname string) (*tCacheEntry, bool) {
 	if nil == cl {
 		return nil, false
 	}
@@ -265,15 +269,12 @@ func (cl *TCacheList) SetEntry(aHostname string, aIPs tIpList, aTTL time.Duratio
 	aHostname = strings.ToLower(aHostname)
 
 	if 0 == len(cl.Cache) {
-		cl.Cache = make(map[string]*TCacheEntry, DefaultCacheSize)
+		cl.Cache = make(map[string]*tCacheEntry, DefaultCacheSize)
 	}
 
+	ce := &tCacheEntry{}
 	cl.Lock()
-	if ce, ok := cl.Cache[aHostname]; ok {
-		cl.Cache[aHostname] = ce.Update(aIPs, aTTL)
-	} else {
-		cl.Cache[aHostname] = newCacheEntry(aTTL).Update(aIPs, aTTL)
-	}
+	cl.Cache[aHostname] = ce.Update(aIPs, aTTL).(*tCacheEntry)
 	cl.Unlock()
 
 	return cl
