@@ -287,7 +287,7 @@ func (cn *tCacheNode) Create(aCtx context.Context, aPartsList tPartsList, aIPs t
 		// Descend into the child node
 		if node, ok = node.tChildren[label]; ok {
 			if (len(aPartsList) - 1) == depth {
-				node.Update(aIPs, aTTL)
+				node.Update(aCtx, aIPs, aTTL)
 				rOK = true
 			}
 		}
@@ -480,71 +480,51 @@ func (cn *tCacheNode) expire(aCtx context.Context) (rOK bool) {
 	return
 } // expire()
 
-/* * /
-// `forEach()` calls the given function for each node in the trie.
-//
-// The given `aFunc()` is called by the owning trie in a locked R/O context
-// for each node in the trie.
-//
-// Since all fields of all sub-nodes of the current node are private, this
-// method doesn't provide access to a node's data. Its only use from outside
-// this package would be to gather statistics or calling the node's public
-// `String()` method.
+// `finalNode()` returns the node that matches the final part of ´aPartsList`.
 //
 // Parameters:
-//   - `aCtx`: The timeout context to use for the operation.
-//   - `aFunc`: The function to call for each node.
-func (cn *tCacheNode) forEach(aCtx context.Context, aFunc func(aNode *tCacheNode)) {
-	if (nil == cn) || (nil == aFunc) {
+//   - `aPartsList`: The list of parts of the pattern to check.
+//
+// Returns:
+//   - `rNode`: The node that matches the pattern, `nil` otherwise.
+//   - `rOK`: `true` if the pattern is in the node's trie, `false` otherwise.
+func (cn *tCacheNode) finalNode(aPartsList tPartsList) (rNode *tCacheNode, rOK bool) {
+	if nil == cn {
 		return
 	}
-	type tStackEntry struct {
-		node *tCacheNode
-	}
-	stack := []tStackEntry{{node: cn}}
 
-	for 0 < len(stack) {
-		// Check for timeout or cancellation
-		if nil != aCtx.Err() {
+	var ( // avoid repeated allocations inside the loop
+		child *tCacheNode
+		depth int
+		label string
+		ok    bool
+	)
+
+	current := cn
+	for depth, label = range aPartsList {
+		// Check for a child with the next label
+		if child, ok = current.tChildren[label]; !ok {
 			return
 		}
 
-		// Pop from stack
-		entry := stack[len(stack)-1]
-		// Remove from stack
-		stack = stack[:len(stack)-1]
-
-		aFunc(entry.node)
-
-		// Collect and sort children kidNames for deterministic order
-		cLen := len(entry.node.tChildren)
-		if 0 == cLen {
-			continue
-		}
-
-		kidNames := make(tPartsList, 0, cLen)
-		for label := range entry.node.tChildren {
-			kidNames = append(kidNames, label)
-		}
-		if 1 < len(kidNames) {
-			sort.Strings(kidNames)
-		}
-
-		// Check for timeout or cancellation
-		if nil != aCtx.Err() {
+		// Descend into the child node
+		current = child
+		if len(aPartsList)-1 == depth {
+			// We're at the last label of the pattern
+			// hence check for a terminal match:
+			if rOK = (0 < len(current.tCachedIP.tIpList)); rOK {
+				if current.isExpired() {
+					rOK = false
+				} else {
+					rNode = current
+				}
+			}
 			return
 		}
-
-		// Push children to stack in reverse-sorted order
-		// (to process them in forward order when popped)
-		for idx := len(kidNames) - 1; 0 <= idx; idx-- {
-			stack = append(stack, tStackEntry{
-				node: entry.node.tChildren[kidNames[idx]],
-			})
-		}
 	}
-} // forEach()
-/* */
+
+	return
+} // finalNode()
 
 // `isExpired()` returns `true` if the cache entry is expired.
 //
@@ -558,15 +538,17 @@ func (cn *tCacheNode) isExpired() bool {
 	return cn.tCachedIP.bestBefore.Before(time.Now())
 } // isExpired()
 
-// `Match()` checks whether the node's trie contains the given pattern.
+// `match()` checks whether the node's trie contains the given pattern and
+// returns the node that matched the pattern.
 //
 // Parameters:
 //   - `aCtx`: The timeout context to use for the operation.
 //   - `aPartsList`: The list of parts of the pattern to check.
 //
 // Returns:
+//   - `rNode`: The node that matched the pattern, `nil` otherwise.
 //   - `rOK`: `true` if the pattern is in the node's trie, `false` otherwise.
-func (cn *tCacheNode) Match(aCtx context.Context, aPartsList tPartsList) (rOK bool) {
+func (cn *tCacheNode) match(aCtx context.Context, aPartsList tPartsList) (rNode *tCacheNode, rOK bool) {
 	if (nil == cn) || (0 == len(aPartsList)) {
 		return
 	}
@@ -574,107 +556,10 @@ func (cn *tCacheNode) Match(aCtx context.Context, aPartsList tPartsList) (rOK bo
 		// No children, thus no match
 		return
 	}
-
-	var ( // avoid repeated allocations inside the loop
-		child *tCacheNode
-		ok    bool
-	)
-
-	for depth, label := range aPartsList {
-		// Check for timeout or cancellation
-		if nil != aCtx.Err() {
-			return
-		}
-
-		// Check for a child with the next label
-		if child, ok = cn.tChildren[label]; !ok {
-			return
-		}
-
-		// Descend into the child node
-		cn = child
-		if len(aPartsList)-1 == depth {
-			// We're at the last label of the pattern,
-			// check for a terminal match
-			rOK = (0 < len(cn.tCachedIP.tIpList))
-		}
-	}
+	rNode, rOK = cn.finalNode(aPartsList)
 
 	return
 } // Match()
-
-/*
-// `merge()` merges the subtree of `aSrc` into the current node.
-//
-// Parameters:
-//   - `aCtx`: The timeout context to use for the operation.
-//   - `aSrc`: The source node to merge from.
-//
-// Returns:
-//   - `*tCacheNode`: The merged node.
-func (n *tCacheNode) merge(aCtx context.Context, aSrc *tCacheNode) *tCacheNode {
-	if nil == n {
-		return aSrc
-	}
-	if nil == aSrc {
-		return n
-	}
-	type (
-		tStackEntry struct {
-			srcNode  *tCacheNode
-			destNode *tCacheNode
-		}
-	)
-	var label string
-
-	stack := []tStackEntry{{aSrc, n}}
-
-	for 0 < len(stack) {
-		// Check for timeout or cancellation
-		if nil != aCtx.Err() {
-			break
-		}
-		entry := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-
-		// Merge terminal flags using OR
-		if 0 != entry.srcNode.terminator {
-			entry.destNode.terminator |= entry.srcNode.terminator
-		}
-
-		// Collect and sort children keys for deterministic order
-		cLen := len(entry.srcNode.tChildren)
-		if 0 == cLen {
-			continue
-		}
-
-		kidNames := make(tPartsList, 0, cLen)
-		for label = range entry.srcNode.tChildren {
-			kidNames = append(kidNames, label)
-		}
-		if 1 < len(kidNames) {
-			sort.Strings(kidNames)
-		}
-
-		for _, label = range kidNames {
-			srcChild := entry.srcNode.tChildren[label]
-			destChild, exists := entry.destNode.tChildren[label]
-
-			if !exists {
-				// Create new destination child
-				destChild = newNode()
-				destChild.terminator = srcChild.terminator
-				entry.destNode.tChildren[label] = destChild
-			}
-
-			// Push to stack for deeper merge
-			stack = append(stack, tStackEntry{srcChild, destChild})
-		}
-	}
-
-	return n
-} // merge()
-*/
 
 // `Retrieve()` returns the IP addresses for the given pattern.
 //
@@ -689,37 +574,12 @@ func (cn *tCacheNode) Retrieve(aCtx context.Context, aPartsList tPartsList) (rIP
 		return
 	}
 
-	var ( // avoid repeated allocations inside the loop
-		child *tCacheNode
-		ok    bool
-	)
-
-	node := cn
-	for depth, label := range aPartsList {
-		// Check for timeout or cancellation
-		if nil != aCtx.Err() {
-			return
-		}
-
-		// Check for a child with the next label
-		if child, ok = node.tChildren[label]; !ok {
-			return
-		}
-
-		// Descend into the child node
-		node = child
-		if len(aPartsList)-1 == depth {
-			// We're at the last label of the pattern,
-			// check for a terminal match
-			if node.isExpired() {
-				return
-			}
-			rIPs = node.tCachedIP.tIpList
-		}
+	if node, ok := cn.finalNode(aPartsList); ok {
+		rIPs = node.tCachedIP.tIpList
 	}
 
 	return
-} // Read()
+} // Retrieve()
 
 // `store()` writes all patterns currently in the node to the writer, one
 // hostname pattern per line.
@@ -846,12 +706,13 @@ func (cn *tCacheNode) String() string {
 // If the given IP list is empty, the cache node's IP list is cleared/removed.
 //
 // Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
 //   - `aIPs`: List of IP addresses to Update the cache entry with.
 //   - `aTTL`: Time to live for the cache entry.
 //
 // Returns:
 //   - `iCacheNode`: The updated cache node.
-func (cn *tCacheNode) Update(aIPs tIpList, aTTL time.Duration) iCacheNode {
+func (cn *tCacheNode) Update(aCtx context.Context, aIPs tIpList, aTTL time.Duration) iCacheNode {
 	if nil == cn {
 		return nil
 	}
