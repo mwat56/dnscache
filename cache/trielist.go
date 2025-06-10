@@ -8,6 +8,7 @@ package cache
 
 import (
 	"context"
+	"net"
 	"runtime"
 	"sync"
 	"time"
@@ -34,7 +35,7 @@ type (
 	}
 
 	//
-	// `tTrie` is a thread-safe trie for FQDN wildcards. It
+	// `TTrieList` is a thread-safe trie for FQDN wildcards. It
 	// basically provides a CRUD interface for FQDN patterns.
 	//
 	//   - `C`: Create a new pattern [Add],
@@ -50,10 +51,10 @@ type (
 // ---------------------------------------------------------------------------
 // `TTrieList` constructor:
 
-// `newTrie()` creates a new `tTrie` instance.
+// `newTrie()` creates a new `TTrieList` instance.
 //
 // Returns:
-//   - `*tTrie`: A new `tTrie` instance.
+//   - `*TTrieList`: A new `TTrieList` instance.
 func newTrie() *TTrieList {
 	return &TTrieList{
 		tRoot: tRoot{
@@ -61,6 +62,15 @@ func newTrie() *TTrieList {
 		}, // root node of the trie
 	}
 } // newTrie()
+
+// --------------------------------------------------------------------------
+
+// `init()` ensures proper interface implementation.
+func init() {
+	var (
+		_ iCacheList = (*TTrieList)(nil)
+	)
+} // init()
 
 // ---------------------------------------------------------------------------
 // `TTrieList` methods:
@@ -86,23 +96,47 @@ func (tl *TTrieList) AutoExpire(aRate time.Duration, aAbort chan struct{}) {
 	}
 } // AutoExpire()
 
-// `Delete()` removes the cache entry for the given hostname.
+// `Create()` adds a new cache entry for the given hostname.
 //
 // Parameters:
-//   - `aHostname`: The hostname to remove the cache entry for.
+//   - `aCtx`: The timeout context to use for the operation.
+//   - `aHostname`: The hostname to add a cache entry for.
+//   - `aIPs`: List of IP addresses to add to the cache entry.
+//   - `aTTL`: Time to live for the cache entry.
 //
 // Returns:
-//   - `*TTrieList`: The updated trie.
-func (tl *TTrieList) Delete(aHostname string) *TTrieList {
+//   - `*TTrieList`: The updated cache list.
+func (tl *TTrieList) Create(aCtx context.Context, aHostname string, aIPs []net.IP, aTTL time.Duration) iCacheList {
 	if nil == tl {
 		return nil
 	}
 
+	parts := pattern2parts(aHostname)
 	tl.Lock()
-	tl.node.Delete(context.TODO(), pattern2parts(aHostname))
+	tl.node.Create(aCtx, parts, aIPs, aTTL)
 	tl.Unlock()
 
 	return tl
+} // Create()
+
+// `Delete()` removes the cache entry for the given hostname.
+//
+// Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
+//   - `aHostname`: The hostname to remove the cache entry for.
+//
+// Returns:
+//   - `*TTrieList`: The updated trie.
+func (tl *TTrieList) Delete(aCtx context.Context, aHostname string) (rOK bool) {
+	if nil == tl {
+		return
+	}
+
+	tl.Lock()
+	rOK = tl.node.Delete(aCtx, pattern2parts(aHostname))
+	tl.Unlock()
+
+	return
 } // Delete()
 
 // `Equal()` checks whether the cache list is equal to the given one.
@@ -145,18 +179,19 @@ func (tl *TTrieList) expireEntries() {
 // `IPs()` returns the IP addresses for the given hostname.
 //
 // Parameters:
-//   - `aHostname`: The hostname to resolve.
+//   - `aCtx`: The timeout context to use for the operation.
+//   - `aHostname`: The hostname to lookup in the cache.
 //
 // Returns:
 //   - `TIpList`: List of IP addresses for the given hostname.
 //   - `bool`: `true` if the hostname was found in the cache, `false` otherwise.
-func (tl *TTrieList) IPs(aHostname string) (tIpList, bool) {
+func (tl *TTrieList) IPs(aCtx context.Context, aHostname string) ([]net.IP, bool) {
 	if nil == tl {
 		return nil, false
 	}
 
 	tl.RLock()
-	ips := tl.node.Retrieve(context.TODO(), pattern2parts(aHostname))
+	ips := tl.node.Retrieve(aCtx, pattern2parts(aHostname))
 	tl.RUnlock()
 
 	return ips, (0 < len(ips))
@@ -178,28 +213,6 @@ func (tl *TTrieList) Len() int {
 	return patterns
 } // Len()
 
-// `SetEntry()` adds a new cache entry for the given hostname.
-//
-// Parameters:
-//   - `aHostname`: The hostname to add a cache entry for.
-//   - `aIPs`: List of IP addresses to add to the cache entry.
-//   - `aTTL`: Time to live for the cache entry.
-//
-// Returns:
-//   - `*TTrieList`: The updated cache list.
-func (tl *TTrieList) SetEntry(aHostname string, aIPs tIpList, aTTL time.Duration) *TTrieList {
-	if (nil == tl) || (0 == len(aIPs)) {
-		return tl
-	}
-
-	parts := pattern2parts(aHostname)
-	tl.Lock()
-	tl.node.Create(context.TODO(), parts, aIPs, aTTL)
-	tl.Unlock()
-
-	return tl
-} // SetEntry()
-
 // `String()` implements the `fmt.Stringer` interface for a string
 // representation of the cache list.
 //
@@ -216,5 +229,34 @@ func (tl *TTrieList) String() (rStr string) {
 
 	return
 } // String()
+
+// `Update()` updates the cache entry for the given hostname.
+//
+// Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
+//   - `aHostname`: The hostname to update the cache entry for.
+//   - `aIPs`: List of IP addresses to update the cache entry with.
+//   - `aTTL`: Time to live for the cache entry.
+//
+// Returns:
+//   - `*TTrieList`: The updated cache list.
+func (tl *TTrieList) Update(aCtx context.Context, aHostname string, aIPs []net.IP, aTTL time.Duration) iCacheList {
+	if nil == tl {
+		return nil
+	}
+
+	parts := pattern2parts(aHostname)
+	tl.Lock()
+	if cn, ok := tl.node.finalNode(parts); ok {
+		// There's actually a matching cache entry
+		cn.Update(aCtx, aIPs, aTTL)
+	} else {
+		// No matching cache entry, thus create a new one
+		tl.node.Create(aCtx, parts, aIPs, aTTL)
+	}
+	tl.Unlock()
+
+	return tl
+} // Update()
 
 /* _EoF_ */
