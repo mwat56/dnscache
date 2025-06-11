@@ -54,7 +54,7 @@ type (
 func newTrie() *tTrieList {
 	return &tTrieList{
 		tRoot: tRoot{
-			node: newNode(),
+			node: newTrieNode(),
 		}, // root node of the Trie
 	}
 } // newTrie()

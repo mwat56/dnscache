@@ -49,19 +49,6 @@ var (
 	ErrNodeNil = errors.New("node or argument is nil")
 )
 
-// ---------------------------------------------------------------------------
-// `tTrieNode` constructor:
-
-// `newNode()` creates a new `tTrieNode` instance.
-//
-// Returns:
-//   - `*tTrieNode`: A new `tTrieNode` instance.
-func newNode() *tTrieNode {
-	// TODO: Use a pool for `tTrieNode` instances.
-
-	return &tTrieNode{tChildren: make(tChildren)}
-} // newNode()
-
 // --------------------------------------------------------------------------
 
 // `init()` ensures proper interface implementation.
@@ -175,7 +162,7 @@ func (cn *tTrieNode) clone() *tTrieNode {
 		return nil
 	}
 
-	clone := newNode()
+	clone := newTrieNode()
 	type stackEntry struct {
 		src *tTrieNode
 		dst *tTrieNode
@@ -332,9 +319,9 @@ func (cn *tTrieNode) Create(aCtx context.Context, aPartsList tPartsList, aIPs tI
 		// Create a new child node if it doesn't exist
 		if nil == node.tChildren {
 			node.tChildren = make(tChildren)
-			node.tChildren[label] = newNode()
+			node.tChildren[label] = newTrieNode()
 		} else if _, ok = node.tChildren[label]; !ok {
-			node.tChildren[label] = newNode()
+			node.tChildren[label] = newTrieNode()
 		}
 
 		// Descend into the child node
@@ -403,9 +390,11 @@ func (cn *tTrieNode) Delete(aCtx context.Context, aPartsList tPartsList) (rOK bo
 			return
 		}
 
-		// Safe to delete the child node
-		//TODO: Return the child to the pool
-		// putNode(parent.tChildren[label])
+		// Safe to delete the child node.
+		// Return the node to the pool:
+		putNode(parent.tChildren[label])
+
+		// Delete the node from its parent:
 		delete(parent.tChildren, label)
 		rOK = true
 
@@ -523,10 +512,10 @@ func (cn *tTrieNode) expire(aCtx context.Context) (rOK bool) {
 			return
 		}
 
-		//TODO: Return the child to the pool
-		// putNode(entry.parent.tChildren[entry.name])
+		// Return the child to the pool:
+		putNode(entry.parent.tChildren[entry.name])
 
-		// Delete the node from its parent
+		// Delete the node from its parent:
 		delete(entry.parent.tChildren, entry.name)
 	}
 

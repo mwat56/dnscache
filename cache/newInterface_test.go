@@ -49,7 +49,7 @@ func Test_New(t *testing.T) {
 			cSize: 0,
 			want: &tTrieList{
 				tRoot: tRoot{
-					node: newNode(),
+					node: newTrieNode(),
 				},
 			},
 		},
@@ -59,7 +59,7 @@ func Test_New(t *testing.T) {
 			cSize: 128,
 			want: &tTrieList{
 				tRoot: tRoot{
-					node: newNode(),
+					node: newTrieNode(),
 				},
 			},
 		},

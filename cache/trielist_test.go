@@ -25,7 +25,7 @@ func Test_newTrie(t *testing.T) {
 			name: "01 - new Trie",
 			want: &tTrieList{
 				tRoot: tRoot{
-					node: newNode(),
+					node: newTrieNode(),
 				},
 			},
 		},
