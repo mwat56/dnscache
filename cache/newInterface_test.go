@@ -23,25 +23,25 @@ func Test_New(t *testing.T) {
 			name:  "01 - nil",
 			cType: CacheTypeMap,
 			cSize: 0,
-			want:  &tCacheList{},
+			want:  &tMapList{},
 		},
 		{
 			name:  "02 - empty",
 			cType: CacheTypeMap,
 			cSize: 0,
-			want:  &tCacheList{},
+			want:  &tMapList{},
 		},
 		{
 			name:  "03 - default size",
 			cType: CacheTypeMap,
 			cSize: DefaultCacheSize,
-			want:  &tCacheList{},
+			want:  &tMapList{},
 		},
 		{
 			name:  "04 - custom size",
 			cType: CacheTypeMap,
 			cSize: 128,
-			want:  &tCacheList{},
+			want:  &tMapList{},
 		},
 		{
 			name:  "05 - trie",
@@ -83,8 +83,8 @@ func Test_New(t *testing.T) {
 				return
 			}
 
-			gotMap, Gok := got.(*tCacheList)
-			wantMap, Wok := tc.want.(*tCacheList)
+			gotMap, Gok := got.(*tMapList)
+			wantMap, Wok := tc.want.(*tMapList)
 			if Gok && Wok {
 				if !wantMap.Equal(gotMap) {
 					t.Errorf("New() =\n%q\nwant\n%q",

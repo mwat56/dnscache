@@ -27,7 +27,7 @@ type (
 	// the Mutex to use for locking access to the Trie.
 	tRoot struct {
 		sync.RWMutex // barrier for concurrent access
-		node         *tCacheNode
+		node         *tTrieNode
 	}
 
 	//
@@ -309,7 +309,7 @@ func (tl *tTrieList) Range(aCtx context.Context) <-chan string {
 		defer tl.RUnlock()
 
 		type tStackEntry struct {
-			node *tCacheNode
+			node *tTrieNode
 			path tPartsList
 		}
 		stack := []tStackEntry{

@@ -21,16 +21,16 @@ import (
 
 type (
 	//
-	// `tCacheList` is a map of DNS cache entries
+	// `tMapList` is a map of DNS cache entries
 	// indexed by lowercased hostnames.
-	tCacheList struct {
+	tMapList struct {
 		sync.RWMutex
-		Cache map[string]*tCacheEntry
+		Cache map[string]*tMapEntry
 	}
 )
 
 // ---------------------------------------------------------------------------
-// `tCacheList` constructor:
+// `tMapList` constructor:
 
 // `newMap()` returns a new IP address cache list.
 //
@@ -40,14 +40,14 @@ type (
 //   - `aSize`: Initial size of the cache list.
 //
 // Returns:
-//   - `*tCacheList`: A new IP address cache list.
-func newMap(aSize uint) *tCacheList {
+//   - `*tMapList`: A new IP address cache list.
+func newMap(aSize uint) *tMapList {
 	if 0 == aSize {
 		aSize = DefaultCacheSize
 	}
 
-	return &tCacheList{
-		Cache: make(map[string]*tCacheEntry, aSize),
+	return &tMapList{
+		Cache: make(map[string]*tMapEntry, aSize),
 	}
 } // newMap()
 
@@ -56,19 +56,19 @@ func newMap(aSize uint) *tCacheList {
 // `init()` ensures proper interface implementation.
 func init() {
 	var (
-		_ ICacheList = (*tCacheList)(nil)
+		_ ICacheList = (*tMapList)(nil)
 	)
 } // init()
 
 // ---------------------------------------------------------------------------
-// `tCacheList` methods:
+// `tMapList` methods:
 
 // `AutoExpire()` removes expired cache entries at a given interval.
 //
 // Parameters:
 //   - `aRate`: Time interval to refresh the cache.
 //   - `aAbort`: Channel to receive a signal to abort.
-func (cl *tCacheList) AutoExpire(aRate time.Duration, aAbort chan struct{}) {
+func (cl *tMapList) AutoExpire(aRate time.Duration, aAbort chan struct{}) {
 	ticker := time.NewTicker(aRate)
 	defer ticker.Stop()
 
@@ -90,13 +90,13 @@ func (cl *tCacheList) AutoExpire(aRate time.Duration, aAbort chan struct{}) {
 //
 // Returns:
 //   - `ICacheList`: A deep copy of the cache list.
-func (cl *tCacheList) Clone() ICacheList {
+func (cl *tMapList) Clone() ICacheList {
 	if nil == cl {
 		return nil
 	}
 
-	clone := &tCacheList{
-		Cache: make(map[string]*tCacheEntry, len(cl.Cache)),
+	clone := &tMapList{
+		Cache: make(map[string]*tMapEntry, len(cl.Cache)),
 	}
 	cl.RLock()
 	for host, ce := range cl.Cache {
@@ -119,7 +119,7 @@ func (cl *tCacheList) Clone() ICacheList {
 //
 // Returns:
 //   - `ICacheList`: The updated cache list.
-func (cl *tCacheList) Create(aCtx context.Context, aHostname string, aIPs []net.IP, aTTL time.Duration) ICacheList {
+func (cl *tMapList) Create(aCtx context.Context, aHostname string, aIPs []net.IP, aTTL time.Duration) ICacheList {
 	if nil == cl {
 		return nil
 	}
@@ -135,7 +135,7 @@ func (cl *tCacheList) Create(aCtx context.Context, aHostname string, aIPs []net.
 //
 // Returns:
 //   - `bool`: `true` if the cache entry was found and deleted, `false` otherwise.
-func (cl *tCacheList) Delete(aCtx context.Context, aHostname string) (rOK bool) {
+func (cl *tMapList) Delete(aCtx context.Context, aHostname string) (rOK bool) {
 	if nil == cl {
 		return
 	}
@@ -162,7 +162,7 @@ func (cl *tCacheList) Delete(aCtx context.Context, aHostname string) (rOK bool) 
 //
 // Returns:
 //   - `bool`: `true` if the cache list is equal to the given one, `false` otherwise.
-func (cl *tCacheList) Equal(aList *tCacheList) bool {
+func (cl *tMapList) Equal(aList *tMapList) bool {
 	if nil == cl {
 		return nil == aList
 	}
@@ -173,7 +173,7 @@ func (cl *tCacheList) Equal(aList *tCacheList) bool {
 		return false
 	}
 	var (
-		otherEntry *tCacheEntry
+		otherEntry *tMapEntry
 		ok         bool = true
 	)
 
@@ -202,7 +202,7 @@ func (cl *tCacheList) Equal(aList *tCacheList) bool {
 //
 // Returns:
 //   - `bool`: `true` if the hostname was found in the cache, `false` otherwise.
-func (cl *tCacheList) Exists(aCtx context.Context, aHostname string) (rOK bool) {
+func (cl *tMapList) Exists(aCtx context.Context, aHostname string) (rOK bool) {
 	if nil == cl {
 		return
 	}
@@ -221,7 +221,7 @@ func (cl *tCacheList) Exists(aCtx context.Context, aHostname string) (rOK bool) 
 // `expireEntries()` removes all expired cache entries.
 //
 // This method is called automatically by the `AutoExpire()` method.
-func (cl *tCacheList) expireEntries() {
+func (cl *tMapList) expireEntries() {
 	if nil == cl {
 		return
 	}
@@ -246,7 +246,7 @@ func (cl *tCacheList) expireEntries() {
 // Returns:
 //   - `TIpList`: List of IP addresses for the given hostname.
 //   - `bool`: `true` if the hostname was found in the cache, `false` otherwise.
-func (cl *tCacheList) IPs(aCtx context.Context, aHostname string) ([]net.IP, bool) {
+func (cl *tMapList) IPs(aCtx context.Context, aHostname string) ([]net.IP, bool) {
 	if (nil == cl) || (0 == len(cl.Cache)) {
 		return nil, false
 	}
@@ -270,7 +270,7 @@ func (cl *tCacheList) IPs(aCtx context.Context, aHostname string) ([]net.IP, boo
 //
 // Returns:
 //   - `int`: Number of cached hostnames.
-func (cl *tCacheList) Len() int {
+func (cl *tMapList) Len() int {
 	if nil == cl {
 		return 0
 	}
@@ -289,7 +289,7 @@ func (cl *tCacheList) Len() int {
 //
 // Returns:
 //   - `chan string`: Channel that yields all FQDNs in sorted order.
-func (cl *tCacheList) Range(aCtx context.Context) <-chan string {
+func (cl *tMapList) Range(aCtx context.Context) <-chan string {
 	ch := make(chan string)
 	if nil == cl {
 		close(ch)
@@ -328,7 +328,7 @@ func (cl *tCacheList) Range(aCtx context.Context) <-chan string {
 //
 // Returns:
 //   - `string`: String representation of the cache list.
-func (cl *tCacheList) String() string {
+func (cl *tMapList) String() string {
 	if nil == cl {
 		return ""
 	}
@@ -353,7 +353,7 @@ func (cl *tCacheList) String() string {
 //
 // Returns:
 //   - `ICacheList`: The updated cache list.
-func (cl *tCacheList) Update(aCtx context.Context, aHostname string, aIPs []net.IP, aTTL time.Duration) ICacheList {
+func (cl *tMapList) Update(aCtx context.Context, aHostname string, aIPs []net.IP, aTTL time.Duration) ICacheList {
 	if nil == cl {
 		return nil
 	}
@@ -364,16 +364,16 @@ func (cl *tCacheList) Update(aCtx context.Context, aHostname string, aIPs []net.
 	aHostname = strings.ToLower(aHostname)
 
 	if 0 == len(cl.Cache) {
-		cl.Cache = make(map[string]*tCacheEntry, DefaultCacheSize)
+		cl.Cache = make(map[string]*tMapEntry, DefaultCacheSize)
 	}
 
 	if nil != aCtx.Err() {
 		return cl
 	}
 
-	ce := &tCacheEntry{}
+	ce := &tMapEntry{}
 	cl.Lock()
-	cl.Cache[aHostname] = ce.Update(aCtx, aIPs, aTTL).(*tCacheEntry)
+	cl.Cache[aHostname] = ce.Update(aCtx, aIPs, aTTL).(*tMapEntry)
 	cl.Unlock()
 
 	return cl

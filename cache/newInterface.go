@@ -6,6 +6,8 @@ Copyright © 2025  M.Watermann, 10247 Berlin, Germany
 */
 package cache
 
+import "time"
+
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
 type (
@@ -22,6 +24,9 @@ const (
 
 	// `DefaultCacheSize` is the initial size of the cache list.
 	DefaultCacheSize = 1 << 10 // 1024
+
+	// `DefaultTTL` is the default time to live for a DNS cache entry.
+	DefaultTTL = time.Duration(time.Minute << 9) // ~8 hours
 )
 
 // ---------------------------------------------------------------------------

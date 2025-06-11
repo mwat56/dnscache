@@ -20,15 +20,12 @@ const (
 	// `defTimeFormat` is the default time format for the cache entries'
 	// string representation of the `bestBefore` field.
 	defTimeFormat = "2006-01-02 15:04:05.999999999"
-
-	// `DefaultTTL` is the default time to live for a DNS cache entry.
-	DefaultTTL = time.Duration(time.Minute << 9) // ~8 hours
 )
 
 type (
 	//
-	// `tCacheEntry` is a DNS cache entry.
-	tCacheEntry struct {
+	// `tMapEntry` is a DNS cache entry.
+	tMapEntry struct {
 		ips        tIpList   // IP addresses for this entry
 		bestBefore time.Time // time after which the entry is not valid
 	}
@@ -39,23 +36,23 @@ type (
 // `init()` ensures proper interface implementation.
 func init() {
 	var (
-		_ iCacheNode = (*tCacheEntry)(nil)
+		_ iCacheNode = (*tMapEntry)(nil)
 	)
 } // init()
 
 // ---------------------------------------------------------------------------
-// `tCacheEntry` methods:
+// `tMapEntry` methods:
 
 // `clone()` creates a deep copy of the cache entry.
 //
 // Returns:
-//   - `*tCacheEntry`: A deep copy of the cache entry.
-func (ce *tCacheEntry) clone() *tCacheEntry {
+//   - `*tMapEntry`: A deep copy of the cache entry.
+func (ce *tMapEntry) clone() *tMapEntry {
 	if nil == ce {
 		return nil
 	}
 
-	clone := &tCacheEntry{
+	clone := &tMapEntry{
 		bestBefore: ce.bestBefore,
 	}
 
@@ -83,11 +80,11 @@ func (ce *tCacheEntry) clone() *tCacheEntry {
 //
 // Returns:
 //   - `bool`: `true` if the cache entry was created, `false` otherwise.
-func (ce *tCacheEntry) Create(aCtx context.Context, aPartsList tPartsList, aIPs tIpList, aTTL time.Duration) bool {
+func (ce *tMapEntry) Create(aCtx context.Context, aPartsList tPartsList, aIPs tIpList, aTTL time.Duration) bool {
 	if nil == ce {
-		ce = &tCacheEntry{}
+		ce = &tMapEntry{}
 	}
-	ce = ce.Update(aCtx, aIPs, aTTL).(*tCacheEntry)
+	ce = ce.Update(aCtx, aIPs, aTTL).(*tMapEntry)
 
 	return (nil != ce)
 } // Create()
@@ -104,7 +101,7 @@ func (ce *tCacheEntry) Create(aCtx context.Context, aPartsList tPartsList, aIPs 
 //
 // Returns:
 //   - `bool`: `true` if a node was deleted, `false` otherwise.
-func (ce *tCacheEntry) Delete(context.Context, tPartsList) bool {
+func (ce *tMapEntry) Delete(context.Context, tPartsList) bool {
 	if nil != ce {
 		ce.ips = tIpList{}
 		ce.bestBefore = time.Time{}
@@ -122,7 +119,7 @@ func (ce *tCacheEntry) Delete(context.Context, tPartsList) bool {
 //
 // Returns:
 //   - `bool`: `true` if the cache entry is equal to the given one, `false` otherwise.
-func (ce *tCacheEntry) Equal(aEntry *tCacheEntry) bool {
+func (ce *tMapEntry) Equal(aEntry *tMapEntry) bool {
 	if nil == ce {
 		return (nil == aEntry)
 	}
@@ -152,7 +149,7 @@ func (ce *tCacheEntry) Equal(aEntry *tCacheEntry) bool {
 //
 // Returns:
 //   - `net.IP`: First IP address in the cache entry.
-func (ce *tCacheEntry) First() net.IP {
+func (ce *tMapEntry) First() net.IP {
 	if nil == ce {
 		return nil
 	}
@@ -164,7 +161,7 @@ func (ce *tCacheEntry) First() net.IP {
 //
 // Returns:
 //   - `bool`: `true` if the cache entry is expired, `false` otherwise.
-func (ce *tCacheEntry) isExpired() bool {
+func (ce *tMapEntry) isExpired() bool {
 	if (nil == ce) || (0 == len(ce.ips)) {
 		return true
 	}
@@ -176,7 +173,7 @@ func (ce *tCacheEntry) isExpired() bool {
 //
 // Returns:
 //   - `int`: Number of IP addresses in the cache entry.
-func (ce *tCacheEntry) Len() int {
+func (ce *tMapEntry) Len() int {
 	if nil == ce {
 		return 0
 	}
@@ -191,7 +188,7 @@ func (ce *tCacheEntry) Len() int {
 //
 // Returns:
 //   - `tIpList`: The list of IP addresses for the given pattern.
-func (ce *tCacheEntry) Retrieve(context.Context, tPartsList) tIpList {
+func (ce *tMapEntry) Retrieve(context.Context, tPartsList) tIpList {
 	if nil == ce {
 		return tIpList{}
 	}
@@ -203,7 +200,7 @@ func (ce *tCacheEntry) Retrieve(context.Context, tPartsList) tIpList {
 //
 // Returns:
 //   - `string`: String representation of the cache entry.
-func (ce *tCacheEntry) String() string {
+func (ce *tMapEntry) String() string {
 	if nil == ce {
 		return ""
 	}
@@ -233,7 +230,7 @@ func (ce *tCacheEntry) String() string {
 //
 // Returns:
 //   - `iCacheNode`: The updated cache entry.
-func (ce *tCacheEntry) Update(aCtx context.Context, aIPs tIpList, aTTL time.Duration) iCacheNode {
+func (ce *tMapEntry) Update(aCtx context.Context, aIPs tIpList, aTTL time.Duration) iCacheNode {
 	if nil == ce {
 		return nil
 	}

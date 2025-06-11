@@ -29,15 +29,15 @@ type (
 
 	//
 	// `tChildren` is a map of children nodes.
-	tChildren map[string]*tCacheNode
+	tChildren map[string]*tTrieNode
 
 	//
-	// `tCacheNode` represents a node in the Trie.
+	// `tTrieNode` represents a node in the Trie.
 	//
 	// The node is considered a leaf node if no IPs are assigned,
 	// otherwise it's an end node finishing a hostname pattern and
 	// storing the IP addresses for the hostname pattern.
-	tCacheNode struct {
+	tTrieNode struct {
 		tCachedIP // cached data for this node
 		tChildren // children nodes
 	}
@@ -50,16 +50,16 @@ var (
 )
 
 // ---------------------------------------------------------------------------
-// `tCacheNode` constructor:
+// `tTrieNode` constructor:
 
-// `newNode()` creates a new `tCacheNode` instance.
+// `newNode()` creates a new `tTrieNode` instance.
 //
 // Returns:
-//   - `*tCacheNode`: A new `tCacheNode` instance.
-func newNode() *tCacheNode {
-	// TODO: Use a pool for `tCacheNode` instances.
+//   - `*tTrieNode`: A new `tTrieNode` instance.
+func newNode() *tTrieNode {
+	// TODO: Use a pool for `tTrieNode` instances.
 
-	return &tCacheNode{tChildren: make(tChildren)}
+	return &tTrieNode{tChildren: make(tChildren)}
 } // newNode()
 
 // --------------------------------------------------------------------------
@@ -67,12 +67,12 @@ func newNode() *tCacheNode {
 // `init()` ensures proper interface implementation.
 func init() {
 	var (
-		_ iCacheNode = (*tCacheNode)(nil)
+		_ iCacheNode = (*tTrieNode)(nil)
 	)
 } // init()
 
 // ---------------------------------------------------------------------------
-// `tCacheNode` methods:
+// `tTrieNode` methods:
 
 // `allPatterns()` collects all hostname patterns in the node's tree.
 //
@@ -87,18 +87,18 @@ func init() {
 //
 // Returns:
 //   - `rList`: A list of all patterns in the node's tree.
-func (cn *tCacheNode) allPatterns(aCtx context.Context) (rList tPatternList) {
+func (cn *tTrieNode) allPatterns(aCtx context.Context) (rList tPatternList) {
 	if nil == cn {
 		return
 	}
 
 	type tStackEntry struct {
-		parts tPartsList  // path to the node in the Trie
-		node  *tCacheNode // respective node to process
+		parts tPartsList // path to the node in the Trie
+		node  *tTrieNode // respective node to process
 	}
 	var (
 		cLen, idx, pLen    int
-		child              *tCacheNode
+		child              *tTrieNode
 		current            tStackEntry
 		kidNames, newParts tPartsList
 		label              string
@@ -169,20 +169,20 @@ func (cn *tCacheNode) allPatterns(aCtx context.Context) (rList tPatternList) {
 // (no recursion).
 //
 // Returns:
-//   - `*tCacheNode`: A deep copy of the node's Trie.
-func (cn *tCacheNode) clone() *tCacheNode {
+//   - `*tTrieNode`: A deep copy of the node's Trie.
+func (cn *tTrieNode) clone() *tTrieNode {
 	if nil == cn {
 		return nil
 	}
 
 	clone := newNode()
 	type stackEntry struct {
-		src *tCacheNode
-		dst *tCacheNode
+		src *tTrieNode
+		dst *tTrieNode
 	}
 	stack := []stackEntry{{cn, clone}}
 	var (
-		child, clonedChild *tCacheNode
+		child, clonedChild *tTrieNode
 		entry              stackEntry
 		label              string
 	)
@@ -197,7 +197,7 @@ func (cn *tCacheNode) clone() *tCacheNode {
 				continue
 			}
 
-			clonedChild = &tCacheNode{
+			clonedChild = &tTrieNode{
 				tCachedIP: tCachedIP{
 					tIpList:    child.tCachedIP.tIpList,
 					bestBefore: child.tCachedIP.bestBefore,
@@ -220,15 +220,15 @@ func (cn *tCacheNode) clone() *tCacheNode {
 // Returns:
 //   - `rNodes`: The number of nodes in the node's Trie.
 //   - `rPatterns`: The number of patterns in the node's Trie.
-func (cn *tCacheNode) count(aCtx context.Context) (rNodes, rPatterns int) {
+func (cn *tTrieNode) count(aCtx context.Context) (rNodes, rPatterns int) {
 	if nil == cn {
 		return
 	}
 
 	type (
 		tStackEntry struct {
-			parts tPartsList  // path to the node in the Trie
-			node  *tCacheNode // respective node to process
+			parts tPartsList // path to the node in the Trie
+			node  *tTrieNode // respective node to process
 		}
 	)
 	var (
@@ -314,7 +314,7 @@ func (cn *tCacheNode) count(aCtx context.Context) (rNodes, rPatterns int) {
 //
 // Returns:
 //   - `bool`: `true` if a pattern was added, `false` otherwise.
-func (cn *tCacheNode) Create(aCtx context.Context, aPartsList tPartsList, aIPs tIpList, aTTL time.Duration) (rOK bool) {
+func (cn *tTrieNode) Create(aCtx context.Context, aPartsList tPartsList, aIPs tIpList, aTTL time.Duration) (rOK bool) {
 	if (nil == cn) || (0 == len(aPartsList)) {
 		return
 	}
@@ -357,18 +357,18 @@ func (cn *tCacheNode) Create(aCtx context.Context, aPartsList tPartsList, aIPs t
 //
 // Returns:
 //   - `rOK`: `true` if a node was deleted, `false` otherwise.
-func (cn *tCacheNode) Delete(aCtx context.Context, aPartsList tPartsList) (rOK bool) {
+func (cn *tTrieNode) Delete(aCtx context.Context, aPartsList tPartsList) (rOK bool) {
 	if (nil == cn) || (0 == len(aPartsList)) {
 		return
 	}
 	type (
 		tStackEntry struct {
 			name string
-			node *tCacheNode
+			node *tTrieNode
 		}
 	)
 	var (
-		child, current, parent *tCacheNode
+		child, current, parent *tTrieNode
 		label                  string
 		ok                     bool
 		stack                  []tStackEntry
@@ -427,7 +427,7 @@ func (cn *tCacheNode) Delete(aCtx context.Context, aPartsList tPartsList) (rOK b
 //
 // Returns:
 //   - `rOK`: `true` if the node is equal to the given one, `false` otherwise.
-func (cn *tCacheNode) Equal(aNode *tCacheNode) (rOK bool) {
+func (cn *tTrieNode) Equal(aNode *tTrieNode) (rOK bool) {
 	if nil == cn {
 		return (nil == aNode)
 	}
@@ -467,15 +467,15 @@ func (cn *tCacheNode) Equal(aNode *tCacheNode) (rOK bool) {
 //
 // Returns:
 //   - `rOK`: `true` if at least one cache node was removed, `false` otherwise.
-func (cn *tCacheNode) expire(aCtx context.Context) (rOK bool) {
+func (cn *tTrieNode) expire(aCtx context.Context) (rOK bool) {
 	if nil == cn {
 		return
 	}
 
 	type tStackEntry struct {
 		name   string
-		node   *tCacheNode
-		parent *tCacheNode
+		node   *tTrieNode
+		parent *tTrieNode
 	}
 
 	// Start with root node (no parent)
@@ -542,13 +542,13 @@ func (cn *tCacheNode) expire(aCtx context.Context) (rOK bool) {
 // Returns:
 //   - `rNode`: The node that matches the pattern, `nil` otherwise.
 //   - `rOK`: `true` if the pattern is in the node's Trie, `false` otherwise.
-func (cn *tCacheNode) finalNode(aCtx context.Context, aPartsList tPartsList) (rNode *tCacheNode, rOK bool) {
+func (cn *tTrieNode) finalNode(aCtx context.Context, aPartsList tPartsList) (rNode *tTrieNode, rOK bool) {
 	if nil == cn {
 		return
 	}
 
 	var ( // avoid repeated allocations inside the loop
-		child *tCacheNode
+		child *tTrieNode
 		depth int
 		label string
 		ok    bool
@@ -589,7 +589,7 @@ func (cn *tCacheNode) finalNode(aCtx context.Context, aPartsList tPartsList) (rN
 //
 // Returns:
 //   - `net.IP`: First IP address in the cache node.
-func (cn *tCacheNode) First() net.IP {
+func (cn *tTrieNode) First() net.IP {
 	if nil == cn {
 		return nil
 	}
@@ -601,7 +601,7 @@ func (cn *tCacheNode) First() net.IP {
 //
 // Returns:
 //   - `bool`: `true` if the cache node is expired, `false` otherwise.
-func (cn *tCacheNode) isExpired() bool {
+func (cn *tTrieNode) isExpired() bool {
 	if nil == cn {
 		return true
 	}
@@ -613,7 +613,7 @@ func (cn *tCacheNode) isExpired() bool {
 //
 // Returns:
 //   - `int`: Number of IP addresses in the cache node.
-func (cn *tCacheNode) Len() int {
+func (cn *tTrieNode) Len() int {
 	if nil == cn {
 		return 0
 	}
@@ -631,7 +631,7 @@ func (cn *tCacheNode) Len() int {
 // Returns:
 //   - `rNode`: The node that matched the pattern, `nil` otherwise.
 //   - `rOK`: `true` if the pattern is in the node's Trie, `false` otherwise.
-func (cn *tCacheNode) match(aCtx context.Context, aPartsList tPartsList) (rNode *tCacheNode, rOK bool) {
+func (cn *tTrieNode) match(aCtx context.Context, aPartsList tPartsList) (rNode *tTrieNode, rOK bool) {
 	if (nil == cn) || (0 == len(aPartsList)) {
 		return
 	}
@@ -652,7 +652,7 @@ func (cn *tCacheNode) match(aCtx context.Context, aPartsList tPartsList) (rNode 
 //
 // Returns:
 //   - `rIPs`: The list of IP addresses for the given pattern.
-func (cn *tCacheNode) Retrieve(aCtx context.Context, aPartsList tPartsList) (rIPs tIpList) {
+func (cn *tTrieNode) Retrieve(aCtx context.Context, aPartsList tPartsList) (rIPs tIpList) {
 	if (nil == cn) || (0 == len(aPartsList)) || (0 == len(cn.tChildren)) {
 		return
 	}
@@ -686,14 +686,14 @@ func (cn *tCacheNode) Retrieve(aCtx context.Context, aPartsList tPartsList) (rIP
 //
 // Returns:
 //   - `error`: `nil` if the patterns were written successfully, the error otherwise.
-func (cn *tCacheNode) store(aCtx context.Context, aWriter io.Writer) error {
+func (cn *tTrieNode) store(aCtx context.Context, aWriter io.Writer) error {
 	if (nil == cn) || (nil == aWriter) {
 		return ErrNodeNil
 	}
 	type (
 		tStackEntry struct {
 			parts tPartsList
-			node  *tCacheNode
+			node  *tTrieNode
 		}
 	)
 	var (
@@ -776,7 +776,7 @@ func (cn *tCacheNode) store(aCtx context.Context, aWriter io.Writer) error {
 //
 // Returns:
 //   - `string`: The string representation of the node.
-func (cn *tCacheNode) String() string {
+func (cn *tTrieNode) String() string {
 	if nil == cn {
 		return ""
 	}
@@ -800,7 +800,7 @@ func (cn *tCacheNode) String() string {
 //
 // Returns:
 //   - `iCacheNode`: The updated cache node.
-func (cn *tCacheNode) Update(aCtx context.Context, aIPs tIpList, aTTL time.Duration) iCacheNode {
+func (cn *tTrieNode) Update(aCtx context.Context, aIPs tIpList, aTTL time.Duration) iCacheNode {
 	if nil == cn {
 		return nil
 	}

@@ -21,27 +21,27 @@ func Test_newMap(t *testing.T) {
 	tests := []struct {
 		name string
 		size uint
-		want *tCacheList
+		want *tMapList
 	}{
 		{
 			name: "zero size",
 			size: 0,
-			want: &tCacheList{},
+			want: &tMapList{},
 		},
 		{
 			name: "positive size",
 			size: 1,
-			want: &tCacheList{},
+			want: &tMapList{},
 		},
 		{
 			name: "default size",
 			size: DefaultCacheSize,
-			want: &tCacheList{},
+			want: &tMapList{},
 		},
 		{
 			name: "large size",
 			size: 1024,
-			want: &tCacheList{},
+			want: &tMapList{},
 		},
 
 		// TODO: Add test cases.
@@ -62,7 +62,7 @@ func Test_newMap(t *testing.T) {
 func Test_tCacheList_Clone(t *testing.T) {
 	tests := []struct {
 		name string
-		cl   *tCacheList
+		cl   *tMapList
 		want ICacheList
 	}{
 		{
@@ -72,13 +72,13 @@ func Test_tCacheList_Clone(t *testing.T) {
 		},
 		{
 			name: "02 - clone empty",
-			cl:   &tCacheList{},
-			want: &tCacheList{},
+			cl:   &tMapList{},
+			want: &tMapList{},
 		},
 		{
 			name: "03 - clone",
-			cl: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			cl: &tMapList{
+				Cache: map[string]*tMapEntry{
 					"example.com": {
 						ips: tIpList{
 							net.ParseIP("192.168.1.1"),
@@ -87,8 +87,8 @@ func Test_tCacheList_Clone(t *testing.T) {
 					},
 				},
 			},
-			want: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			want: &tMapList{
+				Cache: map[string]*tMapEntry{
 					"example.com": {
 						ips: tIpList{
 							net.ParseIP("192.168.1.1"),
@@ -108,25 +108,25 @@ func Test_tCacheList_Clone(t *testing.T) {
 
 			if nil == got {
 				if nil != tc.want {
-					t.Error("tCacheList.clone() = nil, want non-nil")
+					t.Error("tMapList.clone() = nil, want non-nil")
 				}
 				return
 			}
 			if nil == tc.want {
-				t.Errorf("tCacheList.clone() = %v, want 'nil'",
+				t.Errorf("tMapList.clone() = %v, want 'nil'",
 					got)
 				return
 			}
 
-			gotT, gOK := got.(*tCacheList)
-			wantT, wOK := tc.want.(*tCacheList)
+			gotT, gOK := got.(*tMapList)
+			wantT, wOK := tc.want.(*tMapList)
 			if !gOK || !wOK {
-				t.Errorf("tCacheList.clone() = %v, want %v",
+				t.Errorf("tMapList.clone() = %v, want %v",
 					got, tc.want)
 				return
 			}
 			if !wantT.Equal(gotT) {
-				t.Errorf("tCacheList.clone() = %v, want %v",
+				t.Errorf("tMapList.clone() = %v, want %v",
 					got, tc.want)
 			}
 		})
@@ -152,20 +152,20 @@ func Test_tCacheList_Create(t *testing.T) {
 
 	tests := []struct {
 		name string
-		cl   *tCacheList
+		cl   *tMapList
 		args tArgs
 		want ICacheList
 	}{
 		/* */
 		{
 			name: "01 - set new entry",
-			cl:   &tCacheList{},
+			cl:   &tMapList{},
 			args: tArgs{
 				aHostname: h1,
 				aIPs:      tc1,
 			},
-			want: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			want: &tMapList{
+				Cache: map[string]*tMapEntry{
 					h1: {
 						ips:        tc1,
 						bestBefore: t2.Add(DefaultTTL),
@@ -175,8 +175,8 @@ func Test_tCacheList_Create(t *testing.T) {
 		},
 		{
 			name: "02 - update existing entry",
-			cl: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			cl: &tMapList{
+				Cache: map[string]*tMapEntry{
 					h1: {
 						ips:        tc1,
 						bestBefore: t2.Add(DefaultTTL),
@@ -187,8 +187,8 @@ func Test_tCacheList_Create(t *testing.T) {
 				aHostname: h1,
 				aIPs:      tc2,
 			},
-			want: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			want: &tMapList{
+				Cache: map[string]*tMapEntry{
 					h1: {
 						ips:        tc2,
 						bestBefore: t2.Add(DefaultTTL),
@@ -198,8 +198,8 @@ func Test_tCacheList_Create(t *testing.T) {
 		},
 		{
 			name: "03 - set nil IPs",
-			cl: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			cl: &tMapList{
+				Cache: map[string]*tMapEntry{
 					h1: {
 						ips: tc1,
 					},
@@ -209,16 +209,16 @@ func Test_tCacheList_Create(t *testing.T) {
 				aHostname: h1,
 				aIPs:      nil,
 			},
-			want: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			want: &tMapList{
+				Cache: map[string]*tMapEntry{
 					h1: {},
 				},
 			},
 		},
 		{
 			name: "04 - set empty IPs",
-			cl: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			cl: &tMapList{
+				Cache: map[string]*tMapEntry{
 					h1: {
 						ips: tc1,
 					},
@@ -228,8 +228,8 @@ func Test_tCacheList_Create(t *testing.T) {
 				aHostname: h1,
 				aIPs:      tIpList{},
 			},
-			want: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			want: &tMapList{
+				Cache: map[string]*tMapEntry{
 					h1: {
 						ips: tIpList{},
 					},
@@ -255,19 +255,19 @@ func Test_tCacheList_Create(t *testing.T) {
 			got := tc.cl.Create(context.TODO(), tc.args.aHostname, tc.args.aIPs, DefaultTTL)
 			if nil == got {
 				if nil != tc.want {
-					t.Error("tCacheList.Create() = nil, want non-nil")
+					t.Error("tMapList.Create() = nil, want non-nil")
 				}
 				return
 			}
 			if nil == tc.want {
-				t.Errorf("tCacheList.Create() =\n%q\nwant 'nil'",
+				t.Errorf("tMapList.Create() =\n%q\nwant 'nil'",
 					got)
 				return
 			}
-			gotT := got.(*tCacheList)
-			wantT := tc.want.(*tCacheList)
+			gotT := got.(*tMapList)
+			wantT := tc.want.(*tMapList)
 			if !wantT.Equal(gotT) {
-				t.Errorf("tCacheList.Create() =\n%q\nwant\n%q",
+				t.Errorf("tMapList.Create() =\n%q\nwant\n%q",
 					gotT, wantT)
 			}
 		})
@@ -284,14 +284,14 @@ func Test_tCacheList_Delete(t *testing.T) {
 
 	tests := []struct {
 		name string
-		cl   *tCacheList
+		cl   *tMapList
 		host string
 		want bool
 	}{
 		{
 			name: "01 - delete",
-			cl: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			cl: &tMapList{
+				Cache: map[string]*tMapEntry{
 					h1: {
 						ips: tc1,
 					},
@@ -308,14 +308,14 @@ func Test_tCacheList_Delete(t *testing.T) {
 		},
 		{
 			name: "03 - delete empty",
-			cl:   &tCacheList{},
+			cl:   &tMapList{},
 			host: h1,
 			want: false,
 		},
 		{
 			name: "04 - delete non-existent",
-			cl: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			cl: &tMapList{
+				Cache: map[string]*tMapEntry{
 					h1: {
 						ips: tc1,
 					},
@@ -332,7 +332,7 @@ func Test_tCacheList_Delete(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got := tc.cl.Delete(context.TODO(), tc.host)
 			if got != tc.want {
-				t.Errorf("tCacheList.delete() = %v, want %v",
+				t.Errorf("tMapList.delete() = %v, want %v",
 					got, tc.want)
 			}
 		})
@@ -353,21 +353,21 @@ func Test_tCacheList_Equal(t *testing.T) {
 
 	tests := []struct {
 		name string
-		cl   *tCacheList
-		ol   *tCacheList
+		cl   *tMapList
+		ol   *tMapList
 		want bool
 	}{
 		{
 			name: "01 - equal",
-			cl: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			cl: &tMapList{
+				Cache: map[string]*tMapEntry{
 					h1: {
 						ips: tc1,
 					},
 				},
 			},
-			ol: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			ol: &tMapList{
+				Cache: map[string]*tMapEntry{
 					h1: {
 						ips: tc1,
 					},
@@ -377,15 +377,15 @@ func Test_tCacheList_Equal(t *testing.T) {
 		},
 		{
 			name: "02 - not equal",
-			cl: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			cl: &tMapList{
+				Cache: map[string]*tMapEntry{
 					h1: {
 						ips: tc1,
 					},
 				},
 			},
-			ol: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			ol: &tMapList{
+				Cache: map[string]*tMapEntry{
 					h1: {
 						ips: tc2,
 					},
@@ -396,8 +396,8 @@ func Test_tCacheList_Equal(t *testing.T) {
 		{
 			name: "03 - nil cl",
 			cl:   nil,
-			ol: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			ol: &tMapList{
+				Cache: map[string]*tMapEntry{
 					h1: {
 						ips: tc1,
 					},
@@ -407,8 +407,8 @@ func Test_tCacheList_Equal(t *testing.T) {
 		},
 		{
 			name: "04 - nil ol",
-			cl: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			cl: &tMapList{
+				Cache: map[string]*tMapEntry{
 					h1: {
 						ips: tc1,
 					},
@@ -425,8 +425,8 @@ func Test_tCacheList_Equal(t *testing.T) {
 		},
 		{
 			name: "06 - different length",
-			cl: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			cl: &tMapList{
+				Cache: map[string]*tMapEntry{
 					h1: {
 						ips: tc1,
 					},
@@ -435,8 +435,8 @@ func Test_tCacheList_Equal(t *testing.T) {
 					},
 				},
 			},
-			ol: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			ol: &tMapList{
+				Cache: map[string]*tMapEntry{
 					h1: {
 						ips: tc1,
 					},
@@ -446,15 +446,15 @@ func Test_tCacheList_Equal(t *testing.T) {
 		},
 		{
 			name: "07 - different hostnames",
-			cl: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			cl: &tMapList{
+				Cache: map[string]*tMapEntry{
 					h1: {
 						ips: tc1,
 					},
 				},
 			},
-			ol: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			ol: &tMapList{
+				Cache: map[string]*tMapEntry{
 					h2: {
 						ips: tc1,
 					},
@@ -469,7 +469,7 @@ func Test_tCacheList_Equal(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := tc.cl.Equal(tc.ol); got != tc.want {
-				t.Errorf("tCacheList.Equal() = '%v', want '%v'",
+				t.Errorf("tMapList.Equal() = '%v', want '%v'",
 					got, tc.want)
 			}
 		})
@@ -484,13 +484,13 @@ func Test_tCacheList_expireEntries(t *testing.T) {
 
 	tests := []struct {
 		name string
-		cl   *tCacheList
-		want *tCacheList
+		cl   *tMapList
+		want *tMapList
 	}{
 		{
 			name: "01 - expire entries",
-			cl: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			cl: &tMapList{
+				Cache: map[string]*tMapEntry{
 					h1: {
 						ips: tIpList{
 							net.ParseIP("192.168.1.1"),
@@ -514,8 +514,8 @@ func Test_tCacheList_expireEntries(t *testing.T) {
 					},
 				},
 			},
-			want: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			want: &tMapList{
+				Cache: map[string]*tMapEntry{
 					h2: {
 						ips: tIpList{
 							net.ParseIP("192.168.1.3"),
@@ -534,7 +534,7 @@ func Test_tCacheList_expireEntries(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.cl.expireEntries()
 			if !tc.cl.Equal(tc.want) {
-				t.Errorf("tCacheList.expireEntries() =\n'%v'\nwant\n'%v'",
+				t.Errorf("tMapList.expireEntries() =\n'%v'\nwant\n'%v'",
 					tc.cl, tc.want)
 			}
 		})
@@ -544,15 +544,15 @@ func Test_tCacheList_expireEntries(t *testing.T) {
 func Test_tCacheList_Exists(t *testing.T) {
 	tests := []struct {
 		name   string
-		cl     *tCacheList
+		cl     *tMapList
 		host   string
 		wantOK bool
 	}{
 		/* */
 		{
 			name: "01 - found",
-			cl: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			cl: &tMapList{
+				Cache: map[string]*tMapEntry{
 					"example.com": {
 						ips: tIpList{
 							net.ParseIP("192.168.1.1"),
@@ -566,8 +566,8 @@ func Test_tCacheList_Exists(t *testing.T) {
 		},
 		{
 			name: "02 - not found",
-			cl: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			cl: &tMapList{
+				Cache: map[string]*tMapEntry{
 					"example.com": {
 						ips: tIpList{
 							net.ParseIP("192.168.2.1"),
@@ -587,8 +587,8 @@ func Test_tCacheList_Exists(t *testing.T) {
 		},
 		{
 			name: "04 - empty hostname",
-			cl: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			cl: &tMapList{
+				Cache: map[string]*tMapEntry{
 					"example.com": {
 						ips: tIpList{
 							net.ParseIP("192.168.4.4"),
@@ -608,7 +608,7 @@ func Test_tCacheList_Exists(t *testing.T) {
 			gotOK := tc.cl.Exists(context.TODO(), tc.host)
 
 			if gotOK != tc.wantOK {
-				t.Errorf("tCacheList.Exists() got = %v, want %v",
+				t.Errorf("tMapList.Exists() got = %v, want %v",
 					gotOK, tc.wantOK)
 				return
 			}
@@ -626,15 +626,15 @@ func Test_tCacheList_IPs(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		cl      *tCacheList
+		cl      *tMapList
 		host    string
 		wantIPs tIpList
 		wantOK  bool
 	}{
 		{
 			name: "01 - found",
-			cl: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			cl: &tMapList{
+				Cache: map[string]*tMapEntry{
 					h1: {
 						ips: tc1,
 					},
@@ -646,8 +646,8 @@ func Test_tCacheList_IPs(t *testing.T) {
 		},
 		{
 			name: "02 - not found",
-			cl: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			cl: &tMapList{
+				Cache: map[string]*tMapEntry{
 					h1: {
 						ips: tc1,
 					},
@@ -666,8 +666,8 @@ func Test_tCacheList_IPs(t *testing.T) {
 		},
 		{
 			name: "04 - empty hostname",
-			cl: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			cl: &tMapList{
+				Cache: map[string]*tMapEntry{
 					h1: {
 						ips: tc1,
 					},
@@ -686,12 +686,12 @@ func Test_tCacheList_IPs(t *testing.T) {
 			got, gotOK := tc.cl.IPs(context.TODO(), tc.host)
 
 			if !tc.wantIPs.Equal(got) {
-				t.Errorf("tCacheList.ips() got = %q, want %q",
+				t.Errorf("tMapList.ips() got = %q, want %q",
 					got, tc.wantIPs)
 			}
 
 			if gotOK != tc.wantOK {
-				t.Errorf("tCacheList.ips() got1 = '%v', want '%v'",
+				t.Errorf("tMapList.ips() got1 = '%v', want '%v'",
 					gotOK, tc.wantOK)
 			}
 		})
@@ -701,7 +701,7 @@ func Test_tCacheList_IPs(t *testing.T) {
 func Test_tCacheList_Range(t *testing.T) {
 	tests := []struct {
 		name string
-		cl   *tCacheList
+		cl   *tMapList
 		want []string // filled in test code
 	}{
 		/* */
@@ -717,7 +717,7 @@ func Test_tCacheList_Range(t *testing.T) {
 		},
 		{
 			name: "03 - one entry",
-			cl: func() *tCacheList {
+			cl: func() *tMapList {
 				l := newMap(0)
 				l.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
 				return l
@@ -726,7 +726,7 @@ func Test_tCacheList_Range(t *testing.T) {
 		},
 		{
 			name: "04 - two entries",
-			cl: func() *tCacheList {
+			cl: func() *tMapList {
 				l := newMap(0)
 				l.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
 				l.Create(context.TODO(), "domain.tld", tIpList{net.ParseIP("192.168.1.2")}, 0)
@@ -736,7 +736,7 @@ func Test_tCacheList_Range(t *testing.T) {
 		},
 		{
 			name: "05 - three entries",
-			cl: func() *tCacheList {
+			cl: func() *tMapList {
 				l := newMap(0)
 				l.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
 				l.Create(context.TODO(), "domain.tld", tIpList{net.ParseIP("192.168.1.2")}, 0)
@@ -787,7 +787,7 @@ func Test_tCacheList_String(t *testing.T) {
 
 	tests := []struct {
 		name string
-		cl   *tCacheList
+		cl   *tMapList
 		want string
 	}{
 		{
@@ -797,13 +797,13 @@ func Test_tCacheList_String(t *testing.T) {
 		},
 		{
 			name: "01 - empty cache list",
-			cl:   &tCacheList{},
+			cl:   &tMapList{},
 			want: "",
 		},
 		{
 			name: "02 - one entry",
-			cl: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			cl: &tMapList{
+				Cache: map[string]*tMapEntry{
 					h1: {
 						ips: tc1,
 					},
@@ -818,7 +818,7 @@ func Test_tCacheList_String(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := tc.cl.String(); got != tc.want {
-				t.Errorf("tCacheList.String() =\n%q\nwant\n%q",
+				t.Errorf("tMapList.String() =\n%q\nwant\n%q",
 					got, tc.want)
 			}
 		})
@@ -832,7 +832,7 @@ func TestTCacheList_Update(t *testing.T) {
 	}
 	tests := []struct {
 		name string
-		cl   *tCacheList
+		cl   *tMapList
 		args tArgs
 		want ICacheList
 	}{
@@ -849,13 +849,13 @@ func TestTCacheList_Update(t *testing.T) {
 		/* */
 		{
 			name: "02 - empty cache list",
-			cl:   &tCacheList{},
+			cl:   &tMapList{},
 			args: tArgs{
 				aHostname: "example.com",
 				aIPs:      []net.IP{net.ParseIP("192.168.2.2")},
 			},
-			want: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			want: &tMapList{
+				Cache: map[string]*tMapEntry{
 					"example.com": {
 						ips: tIpList{
 							net.ParseIP("192.168.2.2"),
@@ -866,14 +866,14 @@ func TestTCacheList_Update(t *testing.T) {
 		},
 		{
 			name: "03 - empty arguments",
-			cl:   &tCacheList{},
+			cl:   &tMapList{},
 			args: tArgs{},
-			want: &tCacheList{},
+			want: &tMapList{},
 		},
 		{
 			name: "04 - update existing entry",
-			cl: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			cl: &tMapList{
+				Cache: map[string]*tMapEntry{
 					"example.com": {
 						ips: tIpList{
 							net.ParseIP("192.168.1.3"),
@@ -885,8 +885,8 @@ func TestTCacheList_Update(t *testing.T) {
 				aHostname: "example.com",
 				aIPs:      []net.IP{net.ParseIP("192.168.3.3")},
 			},
-			want: &tCacheList{
-				Cache: map[string]*tCacheEntry{
+			want: &tMapList{
+				Cache: map[string]*tMapEntry{
 					"example.com": {
 						ips: tIpList{
 							net.ParseIP("192.168.3.3"),
@@ -909,13 +909,13 @@ func TestTCacheList_Update(t *testing.T) {
 				}
 				return
 			}
-			tGot := got.(*tCacheList)
+			tGot := got.(*tMapList)
 			if nil == tc.want {
 				t.Errorf("TCacheList.Update() =\n%q\nwant 'nil'",
 					tGot)
 				return
 			}
-			tWant := tc.want.(*tCacheList)
+			tWant := tc.want.(*tMapList)
 			if !tWant.Equal(tGot) {
 				t.Errorf("TCacheList.Update() =\n%v\nwant\n%v",
 					tGot, tWant)
