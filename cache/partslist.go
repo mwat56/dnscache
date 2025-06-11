@@ -1,13 +1,14 @@
 /*
 Copyright © 2025  M.Watermann, 10247 Berlin, Germany
 
-	    All rights reserved
+		All rights reserved
 	EMail : <support@mwat.de>
 */
 package cache
 
 import (
 	"slices"
+	"sort"
 	"strings"
 )
 
@@ -19,7 +20,7 @@ type (
 )
 
 // ---------------------------------------------------------------------------
-// Helper function:
+// Helper functions:
 
 // `pattern2parts()` converts a hostname pattern to a reversed list of parts.
 //
@@ -42,6 +43,30 @@ func pattern2parts(aPattern string) tPartsList {
 
 	return parts
 } // pattern2parts()
+
+// `sortHostnames()` sorts a list of FQDNs by their reversed parts
+// (i.e. TLD first).
+//
+// Parameters:
+//   - `aHostsList`: The list of FQDNs to sort.
+func sortHostnames(aHostsList []string) {
+	sort.Slice(aHostsList,
+		func(FQDN1, FQDN2 int) bool {
+			// Split FQDNs into parts and reverse them
+			parts1 := pattern2parts(aHostsList[FQDN1])
+			parts2 := pattern2parts(aHostsList[FQDN2])
+
+			// Compare parts lexicographically
+			for idx := 0; (len(parts1) > idx) && (len(parts2) > idx); idx++ {
+				if parts1[idx] != parts2[idx] {
+					return (parts1[idx] < parts2[idx])
+				}
+			}
+			// If all compared parts are equal, shorter hostname comes first
+			return (len(parts1) < len(parts2))
+		},
+	)
+} // sortHostnames()
 
 // ---------------------------------------------------------------------------
 // `tPartsList` methods:

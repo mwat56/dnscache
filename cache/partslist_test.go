@@ -71,6 +71,71 @@ func Test_pattern2parts(t *testing.T) {
 	}
 } // Test_pattern2parts()
 
+func Test_sortHostnames(t *testing.T) {
+	tests := []struct {
+		name      string
+		hosts     []string
+		wantHosts []string
+	}{
+		/* */
+		{
+			name:      "01 - nil list",
+			hosts:     nil,
+			wantHosts: nil,
+		},
+		{
+			name:      "02 - empty list",
+			hosts:     []string{},
+			wantHosts: []string{},
+		},
+		{
+			name:      "03 - one element",
+			hosts:     []string{"tld"},
+			wantHosts: []string{"tld"},
+		},
+		{
+			name:      "04 - two elements",
+			hosts:     []string{"domain.tld", "tld"},
+			wantHosts: []string{"tld", "domain.tld"},
+		},
+		{
+			name:      "05 - three elements",
+			hosts:     []string{"domain.tld", "tld", "sub.domain.tld"},
+			wantHosts: []string{"tld", "domain.tld", "sub.domain.tld"},
+		},
+		{
+			name:      "06 - four elements",
+			hosts:     []string{"domain.tld", "tld", "host.sub.domain.tld", "sub.domain.tld"},
+			wantHosts: []string{"tld", "domain.tld", "sub.domain.tld", "host.sub.domain.tld"},
+		},
+		/* */
+		// TODO: Add test cases.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.hosts
+			sortHostnames(got)
+
+			if nil == got {
+				if nil != tc.wantHosts {
+					t.Error("sortHostnames() = nil, want non-nil")
+				}
+				return
+			}
+			if nil == tc.wantHosts {
+				t.Errorf("sortHostnames() =\n%v\nwant 'nil'",
+					got)
+				return
+			}
+			if !slices.Equal(got, tc.wantHosts) {
+				t.Errorf("sortHostnames() =\n%v\nwant\n%v",
+					got, tc.wantHosts)
+			}
+		})
+	}
+} // Test_sortHostnames()
+
 func Test_tPartsList_Equal(t *testing.T) {
 	tests := []struct {
 		name  string
