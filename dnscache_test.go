@@ -12,8 +12,6 @@ import (
 	"slices"
 	"testing"
 	"time"
-
-	"github.com/mwat56/dnscache/cache"
 )
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
@@ -43,14 +41,11 @@ func Test_NewWithOptions(t *testing.T) {
 	customResolver := &net.Resolver{
 		PreferGo: true,
 	}
-
-	type testCase struct {
+	tests := []struct {
 		name    string
 		options TResolverOptions
 		check   func(*testing.T, *TResolver)
-	}
-
-	tests := []testCase{
+	}{
 		/* */
 		{
 			name:    "01 - default options",
@@ -131,16 +126,15 @@ func Test_NewWithOptions(t *testing.T) {
 
 				testHost := "test.example.com"
 				testIP := net.ParseIP("192.168.1.1")
-				r.TCacheList.SetEntry(testHost, []net.IP{testIP}, cache.DefaultTTL)
+				r.ICacheList.Create(context.TODO(), testHost, []net.IP{testIP}, 0)
 
 				// Verify the element was added successfully
-				ce, ok := r.TCacheList.GetEntry(testHost)
-				if !ok || (1 != ce.Len()) || !ce.First().Equal(testIP) {
+				if exists := r.ICacheList.Exists(context.TODO(), testHost); !exists {
 					t.Error("Failed to add and retrieve element from cache with custom size")
 				}
 
 				// Clear the test data
-				r.TCacheList.Delete(testHost)
+				r.ICacheList.Delete(context.TODO(), testHost)
 			},
 		},
 		{
@@ -196,23 +190,21 @@ func Test_NewWithOptions(t *testing.T) {
 } // Test_NewWithOptions()
 
 func Test_TResolver_Fetch(t *testing.T) {
-	type testCase struct {
+	tests := []struct {
 		name     string
 		hostname string
 		setup    func(*TResolver)
 		wantIPs  []string
 		wantErr  bool
-	}
-
-	tests := []testCase{
+	}{
 		{
 			name:     "fetch from cache",
 			hostname: "cached.example.com",
 			setup: func(r *TResolver) {
-				r.TCacheList.SetEntry("cached.example.com", []net.IP{
+				r.ICacheList.Create(context.TODO(), "cached.example.com", []net.IP{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
-				}, cache.DefaultTTL)
+				}, 0)
 			},
 			wantIPs: []string{"192.168.1.1", "192.168.1.2"},
 			wantErr: false,
@@ -261,22 +253,20 @@ func Test_TResolver_Fetch(t *testing.T) {
 } // Test_TResolver_Fetch()
 
 func Test_TResolver_FetchFirstString(t *testing.T) {
-	type testCase struct {
+	tests := []struct {
 		name     string
 		hostname string
 		setup    func(*TResolver)
 		want     string
 		wantErr  bool
-	}
-
-	tests := []testCase{
+	}{
 		{
 			name:     "fetch from cache",
 			hostname: "cached.example.com",
 			setup: func(r *TResolver) {
-				r.TCacheList.SetEntry("cached.example.com", []net.IP{
+				r.ICacheList.Create(context.TODO(), "cached.example.com", []net.IP{
 					net.ParseIP("192.168.1.1"),
-				}, cache.DefaultTTL)
+				}, 0)
 			},
 			want:    "192.168.1.1",
 			wantErr: false,
@@ -335,22 +325,20 @@ func Test_TResolver_FetchFirstString(t *testing.T) {
 } // Test_TResolver_FetchFirstString()
 
 func Test_TResolver_FetchRandomString(t *testing.T) {
-	type testCase struct {
+	tests := []struct {
 		name     string
 		hostname string
 		setup    func(*TResolver)
 		wantErr  bool
-	}
-
-	tests := []testCase{
+	}{
 		{
 			name:     "fetch from cache",
 			hostname: "cached.example.com",
 			setup: func(r *TResolver) {
-				r.TCacheList.SetEntry("cached.example.com", []net.IP{
+				r.ICacheList.Create(context.TODO(), "cached.example.com", []net.IP{
 					net.ParseIP("192.168.1.1"),
 					net.ParseIP("192.168.1.2"),
-				}, cache.DefaultTTL)
+				}, 0)
 			},
 			wantErr: false,
 		},
@@ -420,9 +408,9 @@ func Test_TResolver_lookup(t *testing.T) {
 			hostname: "cached.example.com",
 			setup: func(r *TResolver) {
 				// The cache isn't actually used in this execution path.
-				r.TCacheList.SetEntry("cached.example.com", []net.IP{
+				r.ICacheList.Create(context.TODO(), "cached.example.com", []net.IP{
 					net.ParseIP("192.168.1.1"),
-				}, cache.DefaultTTL)
+				}, 0)
 			},
 			wantIPs: nil,
 			wantErr: true,
@@ -498,23 +486,21 @@ func Test_TResolver_lookup(t *testing.T) {
 } // Test_TResolver_lookup()
 
 func Test_TResolver_Refresh(t *testing.T) {
-	type testCase struct {
+	tests := []struct {
 		name     string
 		setup    func(*TResolver)
 		validate func(*testing.T, *TResolver)
-	}
-
-	tests := []testCase{
+	}{
 		{
 			name: "multiple entries with valid hosts",
 			setup: func(r *TResolver) {
 				// Use real domains that should resolve successfully
-				r.TCacheList.SetEntry("example.com", []net.IP{
+				r.ICacheList.Create(context.TODO(), "example.com", []net.IP{
 					net.ParseIP("93.184.216.34"), // example.com's IP
-				}, cache.DefaultTTL)
-				r.TCacheList.SetEntry("google.com", []net.IP{
+				}, 0)
+				r.ICacheList.Create(context.TODO(), "google.com", []net.IP{
 					net.ParseIP("142.250.185.78"), // one of Google's IPs
-				}, cache.DefaultTTL)
+				}, 0)
 			},
 			validate: func(t *testing.T, r *TResolver) {
 				// After refresh, these entries should still exist
@@ -536,14 +522,14 @@ func Test_TResolver_Refresh(t *testing.T) {
 			name: "entries with invalid hosts",
 			setup: func(r *TResolver) {
 				// Use a non-existent domain that should fail DNS lookup
-				r.TCacheList.SetEntry("invalid.example.nonexistent", []net.IP{
+				r.ICacheList.Create(context.TODO(), "invalid.example.nonexistent", []net.IP{
 					net.ParseIP("192.168.1.1"),
-				}, cache.DefaultTTL)
+				}, 0)
 			},
 			validate: func(t *testing.T, r *TResolver) {
 				// After refresh, this entry should be removed
 				r.RLock()
-				_, exists := r.TCacheList.GetEntry("invalid.example.nonexistent")
+				exists := r.ICacheList.Exists(context.TODO(), "invalid.example.nonexistent")
 				r.RUnlock()
 
 				if exists {

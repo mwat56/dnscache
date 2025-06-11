@@ -73,7 +73,7 @@ type (
 		abortRefresh     chan struct{} // signal to abort `autoRefresh()`
 		adlist           *adl.TADlist  // allow/deny list to check before DNS
 		resolver         *net.Resolver // DNS resolver to use
-		cache.TCacheList               //list of DNS cache entries
+		cache.ICacheList               //list of DNS cache entries
 		ttl              time.Duration // TTL for cache entries
 		retries          uint8         // max. number of retries for DNS lookups
 	}
@@ -137,7 +137,7 @@ func NewWithOptions(aOptions TResolverOptions) *TResolver {
 		}
 	}
 
-	optCacheSize := uint(aOptions.CacheSize)
+	optCacheSize := uint(aOptions.CacheSize) //#nosec G115
 	if 0 >= optCacheSize {
 		optCacheSize = cache.DefaultCacheSize
 	}
@@ -163,7 +163,7 @@ func NewWithOptions(aOptions TResolverOptions) *TResolver {
 		abortRefresh: make(chan struct{}),
 		adlist:       adl.New(optDataDir),
 		resolver:     optResolver,
-		TCacheList:   cache.New(optCacheSize),
+		ICacheList:   cache.New(cache.CacheTypeTrie, optCacheSize),
 		retries:      optRetries,
 	}
 
@@ -185,7 +185,7 @@ func NewWithOptions(aOptions TResolverOptions) *TResolver {
 	}
 	if 0 < optExpireInterval {
 		// Start the auto-expire goroutine.
-		go result.TCacheList.AutoExpire(time.Minute*time.Duration(optExpireInterval), result.abortExpire)
+		go result.ICacheList.AutoExpire(time.Minute*time.Duration(optExpireInterval), result.abortExpire)
 		runtime.Gosched() // yield to the new goroutine
 	}
 
@@ -250,9 +250,13 @@ func (r *TResolver) Fetch(aHostname string) ([]net.IP, error) {
 		return append([]net.IP{}, net.IPv4zero), nil
 	}
 
+	// Use a context with timeout for the entire lookup operation
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute<<1)
+	defer cancel()
+
 	// Check the local cache
 	r.RLock()
-	ips, ok := r.TCacheList.IPs(aHostname)
+	ips, ok := r.ICacheList.IPs(ctx, aHostname)
 	r.RUnlock()
 
 	if ok && (0 < len(ips)) {
@@ -262,10 +266,6 @@ func (r *TResolver) Fetch(aHostname string) ([]net.IP, error) {
 		return ips, nil
 	}
 	incMetricsFields(&gMetrics.Misses)
-
-	// Use a context with timeout for the entire lookup operation
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute<<1)
-	defer cancel()
 
 	return r.LookupWithTimeout(ctx, aHostname)
 } // Fetch()
@@ -490,7 +490,6 @@ func (r *TResolver) LookupWithTimeout(aCtx context.Context, aHostname string) ([
 			break // lookup succeeded
 		}
 
-		// Short delay before retry, respecting context
 		select {
 		case <-aCtx.Done():
 			if 0 < loop {
@@ -513,8 +512,8 @@ func (r *TResolver) LookupWithTimeout(aCtx context.Context, aHostname string) ([
 
 	// Cache the result
 	r.Lock()
-	r.TCacheList.SetEntry(aHostname, ips, r.ttl)
-	setMetricsFieldMax(&gMetrics.Peak, uint32(r.TCacheList.Len())) //#nosec G115
+	r.ICacheList.Create(aCtx, aHostname, ips, r.ttl)
+	setMetricsFieldMax(&gMetrics.Peak, uint32(r.ICacheList.Len())) //#nosec G115
 	r.Unlock()
 
 	return ips, nil
@@ -533,6 +532,8 @@ func (r *TResolver) Metrics() (rMetrics *TMetrics) {
 // This method is called automatically if a refresh interval was
 // specified in the `New()` constructor.
 func (r *TResolver) Refresh() {
+	var dnsErr *net.DNSError
+
 	// Use a context with timeout for the entire refresh operation
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute<<2)
 	defer cancel()
@@ -541,15 +542,13 @@ func (r *TResolver) Refresh() {
 	limiter := time.NewTicker(time.Second << 1)
 	defer limiter.Stop()
 
-	var dnsErr *net.DNSError
-
 	r.RLock()
 	// This is a shallow clone, the new keys and values
 	// are set using ordinary assignment:
-	hosts := r.TCacheList.Clone()
+	cacheList := r.ICacheList.Clone()
 	r.RUnlock()
 
-	for hostname := range *hosts {
+	for hostname := range cacheList.Range(ctx) {
 		select {
 		case <-ctx.Done():
 			return // Context timeout or cancellation
@@ -563,7 +562,7 @@ func (r *TResolver) Refresh() {
 						// of the cache, but we delete the non-existing
 						// host from our original cache:
 						r.Lock()
-						r.TCacheList.Delete(hostname)
+						r.ICacheList.Delete(ctx, hostname)
 						r.Unlock()
 					}
 				}
