@@ -9,6 +9,7 @@ package cache
 import (
 	"context"
 	"net"
+	"slices"
 	"testing"
 	"time"
 )
@@ -18,11 +19,11 @@ import (
 func Test_newTrie(t *testing.T) {
 	tests := []struct {
 		name string
-		want *TTrieList
+		want *tTrieList
 	}{
 		{
-			name: "01 - new trie",
-			want: &TTrieList{
+			name: "01 - new Trie",
+			want: &tTrieList{
 				tRoot: tRoot{
 					node: newNode(),
 				},
@@ -56,7 +57,7 @@ func Test_newTrie(t *testing.T) {
 func Test_TTrieList_AutoExpire(t *testing.T) {
 	tests := []struct {
 		name string
-		tl   *TTrieList
+		tl   *tTrieList
 	}{
 		// TODO: Add test cases.
 	}
@@ -68,13 +69,93 @@ func Test_TTrieList_AutoExpire(t *testing.T) {
 	}
 } // Test_TTrieList_AutoExpire()
 
+func Test_TTrieList_Clone(t *testing.T) {
+	tests := []struct {
+		name string
+		tl   *tTrieList
+		want ICacheList
+	}{
+		/* */
+		{
+			name: "01 - nil list",
+			tl:   nil,
+			want: nil,
+		},
+		{
+			name: "02 - empty list",
+			tl:   newTrie(),
+			want: newTrie(),
+		},
+		{
+			name: "03 - one entry",
+			tl: func() *tTrieList {
+				tl := newTrie()
+				tl.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
+				return tl
+			}(),
+			want: func() *tTrieList {
+				tl := newTrie()
+				tl.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
+				return tl
+			}(),
+		},
+		{
+			name: "04 - two entries",
+			tl: func() *tTrieList {
+				tl := newTrie()
+				tl.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
+				tl.Create(context.TODO(), "domain.tld", tIpList{net.ParseIP("192.168.1.2")}, 0)
+				return tl
+			}(),
+			want: func() *tTrieList {
+				tl := newTrie()
+				tl.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
+				tl.Create(context.TODO(), "domain.tld", tIpList{net.ParseIP("192.168.1.2")}, 0)
+				return tl
+			}(),
+		},
+		/* */
+		// More tests are done with the node's method.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.tl.Clone()
+
+			if nil == got {
+				if nil != tc.want {
+					t.Error("tTrieList.Clone() = nil, want non-nil")
+				}
+				return
+			}
+			if nil == tc.want {
+				t.Errorf("tTrieList.Clone() =\n%q\nwant 'nil'",
+					got)
+				return
+			}
+
+			gotTrie, gOK := got.(*tTrieList)
+			wantTrie, wOK := tc.want.(*tTrieList)
+			if !gOK || !wOK {
+				t.Errorf("tTrieList.Clone() =\n%q\nwant\n%q",
+					got, tc.want)
+				return
+			}
+			if !wantTrie.Equal(gotTrie) {
+				t.Errorf("tTrieList.Clone() =\n%q\nwant\n%q",
+					got, tc.want)
+			}
+		})
+	}
+} // Test_TTrieList_Clone()
+
 func Test_TTrieList_Create(t *testing.T) {
 	tests := []struct {
 		name string
 		host string
 		ips  tIpList
-		tl   *TTrieList
-		want iCacheList
+		tl   *tTrieList
+		want ICacheList
 	}{
 		/* */
 		{
@@ -92,7 +173,7 @@ func Test_TTrieList_Create(t *testing.T) {
 			host: "tld",
 			ips:  tIpList{net.ParseIP("192.168.1.1")},
 			tl:   newTrie(),
-			want: func() *TTrieList {
+			want: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
 				return tl
@@ -103,7 +184,7 @@ func Test_TTrieList_Create(t *testing.T) {
 			host: "domain.tld",
 			ips:  tIpList{net.ParseIP("192.168.1.2")},
 			tl:   newTrie(),
-			want: func() *TTrieList {
+			want: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "domain.tld", tIpList{net.ParseIP("192.168.1.2")}, 0)
 				return tl
@@ -114,7 +195,7 @@ func Test_TTrieList_Create(t *testing.T) {
 			host: "sub.domain.tld",
 			ips:  tIpList{net.ParseIP("192.168.1.3")},
 			tl:   newTrie(),
-			want: func() *TTrieList {
+			want: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "sub.domain.tld", tIpList{net.ParseIP("192.168.1.3")}, 0)
 				return tl
@@ -130,19 +211,19 @@ func Test_TTrieList_Create(t *testing.T) {
 
 			if nil == got {
 				if nil != tc.want {
-					t.Error("TTrieList.Create() = nil, want non-nil")
+					t.Error("tTrieList.Create() = nil, want non-nil")
 				}
 				return
 			}
 			if nil == tc.want {
-				t.Errorf("TTrieList.Create() =\n%v\nwant 'nil'",
+				t.Errorf("tTrieList.Create() =\n%v\nwant 'nil'",
 					got)
 				return
 			}
-			gotTrie := got.(*TTrieList)
-			wantTrie := tc.want.(*TTrieList)
+			gotTrie := got.(*tTrieList)
+			wantTrie := tc.want.(*tTrieList)
 			if !wantTrie.Equal(gotTrie) {
-				t.Errorf("TTrieList.Create() =\n%v\nwant\n%v",
+				t.Errorf("tTrieList.Create() =\n%v\nwant\n%v",
 					got, tc.want)
 			}
 		})
@@ -153,7 +234,7 @@ func Test_TTrieList_Delete(t *testing.T) {
 	tests := []struct {
 		name string
 		host string
-		tl   *TTrieList
+		tl   *tTrieList
 		want bool
 	}{
 		/* */
@@ -171,7 +252,7 @@ func Test_TTrieList_Delete(t *testing.T) {
 		},
 		{
 			name: "03 - delete tld",
-			tl: func() *TTrieList {
+			tl: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
 				return tl
@@ -181,7 +262,7 @@ func Test_TTrieList_Delete(t *testing.T) {
 		},
 		{
 			name: "04 - delete domain.tld",
-			tl: func() *TTrieList {
+			tl: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
 				tl.Create(context.TODO(), "domain.tld", tIpList{net.ParseIP("192.168.1.2")}, 0)
@@ -192,7 +273,7 @@ func Test_TTrieList_Delete(t *testing.T) {
 		},
 		{
 			name: "05 - delete sub.domain.tld",
-			tl: func() *TTrieList {
+			tl: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
 				tl.Create(context.TODO(), "domain.tld", tIpList{net.ParseIP("192.168.1.2")}, 0)
@@ -211,16 +292,16 @@ func Test_TTrieList_Delete(t *testing.T) {
 			got := tc.tl.Delete(context.TODO(), tc.host)
 			if !got {
 				if tc.want {
-					t.Error("TTrieList.Delete() = false, want true")
+					t.Error("tTrieList.Delete() = false, want true")
 				}
 				return
 			}
 			if !tc.want {
-				t.Error("TTrieList.Delete() = true, want false")
+				t.Error("tTrieList.Delete() = true, want false")
 				return
 			}
 			if nil == tc.tl {
-				t.Error("TTrieList.Delete() = nil, want non-nil")
+				t.Error("tTrieList.Delete() = nil, want non-nil")
 				return
 			}
 		})
@@ -230,8 +311,8 @@ func Test_TTrieList_Delete(t *testing.T) {
 func Test_TTrieList_Equal(t *testing.T) {
 	tests := []struct {
 		name  string
-		tl    *TTrieList
-		other *TTrieList
+		tl    *tTrieList
+		other *tTrieList
 		want  bool
 	}{
 		{
@@ -264,18 +345,92 @@ func Test_TTrieList_Equal(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := tc.tl.Equal(tc.other); got != tc.want {
-				t.Errorf("TTrieList.Equal() = '%v', want '%v'",
+				t.Errorf("tTrieList.Equal() = '%v', want '%v'",
 					got, tc.want)
 			}
 		})
 	}
 } // Test_TTrieList_Equal()
 
+func Test_TTrieList_Exists(t *testing.T) {
+	tests := []struct {
+		name string
+		host string
+		tl   *tTrieList
+		want bool
+	}{
+		/* */
+		{
+			name: "01 - nil list",
+			tl:   nil,
+			host: "tld",
+			want: false,
+		},
+		{
+			name: "02 - empty list",
+			tl:   newTrie(),
+			host: "tld",
+			want: false,
+		},
+		{
+			name: "03 - exists tld",
+			tl: func() *tTrieList {
+				tl := newTrie()
+				tl.Create(context.TODO(), "tld",
+					tIpList{net.ParseIP("192.168.3.1")}, 0)
+				return tl
+			}(),
+			host: "tld",
+			want: true,
+		},
+		{
+			name: "04 - exists domain.tld",
+			tl: func() *tTrieList {
+				tl := newTrie()
+				tl.Create(context.TODO(), "tld",
+					tIpList{net.ParseIP("192.168.4.1")}, 0)
+				tl.Create(context.TODO(), "domain.tld",
+					tIpList{net.ParseIP("192.168.4.2")}, 0)
+				return tl
+			}(),
+			host: "domain.tld",
+			want: true,
+		},
+		{
+			name: "05 - exists sub.domain.tld",
+			tl: func() *tTrieList {
+				tl := newTrie()
+				tl.Create(context.TODO(), "tld",
+					tIpList{net.ParseIP("192.168.5.1")}, 0)
+				tl.Create(context.TODO(), "domain.tld",
+					tIpList{net.ParseIP("192.168.5.2")}, 0)
+				tl.Create(context.TODO(), "sub.domain.tld",
+					tIpList{net.ParseIP("192.168.5.3")}, 0)
+				return tl
+			}(),
+			host: "sub.domain.tld",
+			want: true,
+		},
+		/* */
+		// TODO: Add test cases.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			gotOK := tc.tl.Exists(context.TODO(), tc.host)
+			if gotOK != tc.want {
+				t.Errorf("tTrieList.Exists() = '%v', want '%v'",
+					gotOK, tc.want)
+			}
+		})
+	}
+} // Test_TTrieList_Exists()
+
 func Test_TTrieList_expireEntries(t *testing.T) {
 	tests := []struct {
 		name string
-		tl   *TTrieList
-		want *TTrieList
+		tl   *tTrieList
+		want *tTrieList
 	}{
 		/* */
 		{
@@ -290,7 +445,7 @@ func Test_TTrieList_expireEntries(t *testing.T) {
 		},
 		{
 			name: "03 - expire tld",
-			tl: func() *TTrieList {
+			tl: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, -time.Hour)
 				return tl
@@ -299,13 +454,13 @@ func Test_TTrieList_expireEntries(t *testing.T) {
 		},
 		{
 			name: "04 - expire domain.tld",
-			tl: func() *TTrieList {
+			tl: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
 				tl.Create(context.TODO(), "domain.tld", tIpList{net.ParseIP("192.168.1.2")}, -time.Hour)
 				return tl
 			}(),
-			want: func() *TTrieList {
+			want: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
 				return tl
@@ -313,14 +468,14 @@ func Test_TTrieList_expireEntries(t *testing.T) {
 		},
 		{
 			name: "05 - expire domain.tld, keeping child",
-			tl: func() *TTrieList {
+			tl: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
 				tl.Create(context.TODO(), "domain.tld", tIpList{net.ParseIP("192.168.1.2")}, -time.Hour)
 				tl.Create(context.TODO(), "sub.domain.tld", tIpList{net.ParseIP("192.168.1.3")}, 0)
 				return tl
 			}(),
-			want: func() *TTrieList {
+			want: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
 				tl.Create(context.TODO(), "sub.domain.tld", tIpList{net.ParseIP("192.168.1.3")}, 0)
@@ -336,17 +491,17 @@ func Test_TTrieList_expireEntries(t *testing.T) {
 			tc.tl.expireEntries()
 			if nil == tc.tl {
 				if nil != tc.want {
-					t.Error("TTrieList.expireEntries() = nil, want non-nil")
+					t.Error("tTrieList.expireEntries() = nil, want non-nil")
 				}
 				return
 			}
 			if nil == tc.want {
-				t.Errorf("TTrieList.expireEntries() =\n%v\nwant 'nil'",
+				t.Errorf("tTrieList.expireEntries() =\n%v\nwant 'nil'",
 					tc.tl)
 				return
 			}
 			if !tc.want.Equal(tc.tl) {
-				t.Errorf("TTrieList.expireEntries() =\n%v\nwant\n%v",
+				t.Errorf("tTrieList.expireEntries() =\n%v\nwant\n%v",
 					tc.tl, tc.want)
 			}
 		})
@@ -357,7 +512,7 @@ func Test_TTrieList_IPs(t *testing.T) {
 	tests := []struct {
 		name string
 		host string
-		tl   *TTrieList
+		tl   *tTrieList
 		want tIpList
 	}{
 		/* */
@@ -375,7 +530,7 @@ func Test_TTrieList_IPs(t *testing.T) {
 		},
 		{
 			name: "03 - get tld",
-			tl: func() *TTrieList {
+			tl: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
 				return tl
@@ -385,7 +540,7 @@ func Test_TTrieList_IPs(t *testing.T) {
 		},
 		{
 			name: "04 - get domain.tld",
-			tl: func() *TTrieList {
+			tl: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
 				tl.Create(context.TODO(), "domain.tld", tIpList{net.ParseIP("192.168.1.2")}, 0)
@@ -396,7 +551,7 @@ func Test_TTrieList_IPs(t *testing.T) {
 		},
 		{
 			name: "05 - get sub.domain.tld",
-			tl: func() *TTrieList {
+			tl: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
 				tl.Create(context.TODO(), "domain.tld", tIpList{net.ParseIP("192.168.1.2")}, 0)
@@ -416,17 +571,17 @@ func Test_TTrieList_IPs(t *testing.T) {
 
 			if nil == got {
 				if nil != tc.want {
-					t.Error("TTrieList.IPs() = nil, want non-nil")
+					t.Error("tTrieList.IPs() = nil, want non-nil")
 				}
 				return
 			}
 			if nil == tc.want {
-				t.Errorf("TTrieList.IPs() = %v, want 'nil'",
+				t.Errorf("tTrieList.IPs() = %v, want 'nil'",
 					got)
 				return
 			}
 			if !tc.want.Equal(got) {
-				t.Errorf("TTrieList.IPs() =\n%v\nwant\n%v",
+				t.Errorf("tTrieList.IPs() =\n%v\nwant\n%v",
 					got, tc.want)
 			}
 		})
@@ -436,7 +591,7 @@ func Test_TTrieList_IPs(t *testing.T) {
 func Test_TTrieList_Len(t *testing.T) {
 	tests := []struct {
 		name string
-		tl   *TTrieList
+		tl   *tTrieList
 		want int
 	}{
 		/* */
@@ -452,7 +607,7 @@ func Test_TTrieList_Len(t *testing.T) {
 		},
 		{
 			name: "03 - one entry",
-			tl: func() *TTrieList {
+			tl: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
 				return tl
@@ -461,7 +616,7 @@ func Test_TTrieList_Len(t *testing.T) {
 		},
 		{
 			name: "04 - two entries",
-			tl: func() *TTrieList {
+			tl: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
 				tl.Create(context.TODO(), "domain.tld", tIpList{net.ParseIP("192.168.1.2")}, 0)
@@ -471,7 +626,7 @@ func Test_TTrieList_Len(t *testing.T) {
 		},
 		{
 			name: "05 - three entries",
-			tl: func() *TTrieList {
+			tl: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
 				tl.Create(context.TODO(), "domain.tld", tIpList{net.ParseIP("192.168.1.2")}, 0)
@@ -487,17 +642,94 @@ func Test_TTrieList_Len(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := tc.tl.Len(); got != tc.want {
-				t.Errorf("TTrieList.Len() = %d, want %d",
+				t.Errorf("tTrieList.Len() = %d, want %d",
 					got, tc.want)
 			}
 		})
 	}
 } // Test_TTrieList_Len()
 
+func Test_TTrieList_Range(t *testing.T) {
+	tests := []struct {
+		name string
+		tl   *tTrieList
+		want []string // filled in test code
+	}{
+		/* */
+		{
+			name: "01 - nil list",
+			tl:   nil,
+			want: []string{},
+		},
+		{
+			name: "02 - empty list",
+			tl:   newTrie(),
+			want: []string{},
+		},
+		{
+			name: "03 - one entry",
+			tl: func() *tTrieList {
+				tl := newTrie()
+				tl.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
+				return tl
+			}(),
+			want: []string{"tld"},
+		},
+		{
+			name: "04 - two entries",
+			tl: func() *tTrieList {
+				tl := newTrie()
+				tl.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
+				tl.Create(context.TODO(), "domain.tld", tIpList{net.ParseIP("192.168.1.2")}, 0)
+				return tl
+			}(),
+			want: []string{"tld", "domain.tld"},
+		},
+		{
+			name: "05 - three entries",
+			tl: func() *tTrieList {
+				tl := newTrie()
+				tl.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
+				tl.Create(context.TODO(), "domain.tld", tIpList{net.ParseIP("192.168.1.2")}, 0)
+				tl.Create(context.TODO(), "sub.domain.tld", tIpList{net.ParseIP("192.168.1.3")}, 0)
+				return tl
+			}(),
+			want: []string{"tld", "domain.tld", "sub.domain.tld"},
+		},
+		/* */
+		// TODO: Add test cases.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.tl.Range(context.TODO())
+			if nil == got {
+				if nil != tc.want {
+					t.Error("tTrieList.Range() = nil, want non-nil")
+				}
+				return
+			}
+			if nil == tc.want {
+				t.Errorf("tTrieList.Range() = %v, want 'nil'",
+					got)
+				return
+			}
+			var gotList []string
+			for fqdn := range got {
+				gotList = append(gotList, fqdn)
+			}
+			if !slices.Equal(gotList, tc.want) {
+				t.Errorf("tTrieList.Range() =\n%v\nwant\n%v",
+					gotList, tc.want)
+			}
+		})
+	}
+} // Test_TTrieList_Range()
+
 func Test_TTrieList_String(t *testing.T) {
 	tests := []struct {
 		name string
-		tl   *TTrieList
+		tl   *tTrieList
 		want string
 	}{
 		{
@@ -512,7 +744,7 @@ func Test_TTrieList_String(t *testing.T) {
 		},
 		{
 			name: "03 - one entry",
-			tl: func() *TTrieList {
+			tl: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
 				return tl
@@ -521,7 +753,7 @@ func Test_TTrieList_String(t *testing.T) {
 		},
 		{
 			name: "04 - two entries",
-			tl: func() *TTrieList {
+			tl: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
 				tl.Create(context.TODO(), "domain.tld", tIpList{net.ParseIP("192.168.1.2")}, 0)
@@ -531,7 +763,7 @@ func Test_TTrieList_String(t *testing.T) {
 		},
 		{
 			name: "05 - three entries",
-			tl: func() *TTrieList {
+			tl: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "tld", tIpList{net.ParseIP("192.168.1.1")}, 0)
 				tl.Create(context.TODO(), "domain.tld", tIpList{net.ParseIP("192.168.1.2")}, 0)
@@ -546,7 +778,7 @@ func Test_TTrieList_String(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := tc.tl.String(); got != tc.want {
-				t.Errorf("TTrieList.String() =\n%q\nwant\n%q",
+				t.Errorf("tTrieList.String() =\n%q\nwant\n%q",
 					got, tc.want)
 			}
 		})
@@ -558,8 +790,8 @@ func Test_TTrieList_Update(t *testing.T) {
 		name string
 		host string
 		ips  tIpList
-		tl   *TTrieList
-		want iCacheList
+		tl   *tTrieList
+		want ICacheList
 	}{
 		/* */
 		{
@@ -577,7 +809,7 @@ func Test_TTrieList_Update(t *testing.T) {
 			host: "tld",
 			ips:  tIpList{net.ParseIP("192.168.3.3")},
 			tl:   newTrie(),
-			want: func() *TTrieList {
+			want: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "tld",
 					tIpList{net.ParseIP("192.168.3.3")}, 0)
@@ -589,7 +821,7 @@ func Test_TTrieList_Update(t *testing.T) {
 			host: "domain.tld",
 			ips:  tIpList{net.ParseIP("192.168.4.4")},
 			tl:   newTrie(),
-			want: func() *TTrieList {
+			want: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "domain.tld",
 					tIpList{net.ParseIP("192.168.4.4")}, 0)
@@ -601,7 +833,7 @@ func Test_TTrieList_Update(t *testing.T) {
 			host: "sub.domain.tld",
 			ips:  tIpList{net.ParseIP("192.168.5.5")},
 			tl:   newTrie(),
-			want: func() *TTrieList {
+			want: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "sub.domain.tld",
 					tIpList{net.ParseIP("192.168.5.5")}, 0)
@@ -612,13 +844,13 @@ func Test_TTrieList_Update(t *testing.T) {
 			name: "06 - update tld, existing",
 			host: "tld",
 			ips:  tIpList{net.ParseIP("192.168.6.6")},
-			tl: func() *TTrieList {
+			tl: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "tld",
 					tIpList{net.ParseIP("192.168.1.6")}, 0)
 				return tl
 			}(),
-			want: func() *TTrieList {
+			want: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "tld",
 					tIpList{net.ParseIP("192.168.6.6")}, 0)
@@ -629,13 +861,13 @@ func Test_TTrieList_Update(t *testing.T) {
 			name: "07 - update domain.tld, existing",
 			host: "domain.tld",
 			ips:  tIpList{net.ParseIP("192.168.7.7")},
-			tl: func() *TTrieList {
+			tl: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "domain.tld",
 					tIpList{net.ParseIP("192.168.1.7")}, 0)
 				return tl
 			}(),
-			want: func() *TTrieList {
+			want: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "domain.tld",
 					tIpList{net.ParseIP("192.168.7.7")}, 0)
@@ -646,13 +878,13 @@ func Test_TTrieList_Update(t *testing.T) {
 			name: "08 - update sub.domain.tld, existing",
 			host: "sub.domain.tld",
 			ips:  tIpList{net.ParseIP("192.168.8.8")},
-			tl: func() *TTrieList {
+			tl: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "sub.domain.tld",
 					tIpList{net.ParseIP("192.168.1.8")}, 0)
 				return tl
 			}(),
-			want: func() *TTrieList {
+			want: func() *tTrieList {
 				tl := newTrie()
 				tl.Create(context.TODO(), "sub.domain.tld",
 					tIpList{net.ParseIP("192.168.8.8")}, 0)
@@ -669,20 +901,20 @@ func Test_TTrieList_Update(t *testing.T) {
 
 			if nil == got {
 				if nil != tc.want {
-					t.Error("TTrieList.Update() = nil, want non-nil")
+					t.Error("tTrieList.Update() = nil, want non-nil")
 				}
 				return
 			}
 			if nil == tc.want {
-				t.Errorf("TTrieList.Update() =\n%q\nwant 'nil'",
+				t.Errorf("tTrieList.Update() =\n%q\nwant 'nil'",
 					got)
 				return
 			}
 
-			gotTrie := got.(*TTrieList)
-			wantTrie := tc.want.(*TTrieList)
+			gotTrie := got.(*tTrieList)
+			wantTrie := tc.want.(*tTrieList)
 			if !wantTrie.Equal(gotTrie) {
-				t.Errorf("TTrieList.Update() =\n%q\nwant\n%q",
+				t.Errorf("tTrieList.Update() =\n%q\nwant\n%q",
 					got, tc.want)
 			}
 		})

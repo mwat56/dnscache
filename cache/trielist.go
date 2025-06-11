@@ -10,77 +10,73 @@ import (
 	"context"
 	"net"
 	"runtime"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 )
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
-const (
-	// `DefaultCacheSize` is the initial size of the cache list.
-	XDefaultCacheSize = 1 << 9 // 512
-)
-
 type (
-
 	//
-	// `tRoot` is the root node of the trie.
+	// `tRoot` is the root node of the Trie.
 	//
 	// The root node is a special case as it doesn't have a label but
-	// can have multiple children (i.e. the TLDs). Also it provides the
-	// Mutex to use for locking access to the trie.
+	// can have multiple children (i.e. the TLDs). Also it provides
+	// the Mutex to use for locking access to the Trie.
 	tRoot struct {
 		sync.RWMutex // barrier for concurrent access
 		node         *tCacheNode
 	}
 
 	//
-	// `TTrieList` is a thread-safe trie for FQDN wildcards. It
+	// `tTrieList` is a thread-safe Trie for FQDN wildcards. It
 	// basically provides a CRUD interface for FQDN patterns.
 	//
 	//   - `C`: Create a new pattern [Add],
 	//   - `R`: Retrieve a pattern [Match],
 	//   - `U`: Update a pattern [Update],
 	//   - `D`: Delete a pattern [Delete].
-	TTrieList struct {
+	tTrieList struct {
 		_     struct{} // placeholder for embedding
-		tRoot          // embedded root node of the trie
+		tRoot          // embedded root node of the Trie
 	}
 )
 
 // ---------------------------------------------------------------------------
-// `TTrieList` constructor:
+// `tTrieList` constructor:
 
-// `newTrie()` creates a new `TTrieList` instance.
+// `newTrie()` creates a new `tTrieList` instance.
 //
 // Returns:
-//   - `*TTrieList`: A new `TTrieList` instance.
-func newTrie() *TTrieList {
-	return &TTrieList{
+//   - `*tTrieList`: A new `tTrieList` instance.
+func newTrie() *tTrieList {
+	return &tTrieList{
 		tRoot: tRoot{
 			node: newNode(),
-		}, // root node of the trie
+		}, // root node of the Trie
 	}
 } // newTrie()
 
-// --------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 // `init()` ensures proper interface implementation.
 func init() {
 	var (
-		_ iCacheList = (*TTrieList)(nil)
+		_ ICacheList = (*tTrieList)(nil)
 	)
 } // init()
 
 // ---------------------------------------------------------------------------
-// `TTrieList` methods:
+// `tTrieList` methods:
 
 // `AutoExpire()` removes expired cache entries at a given interval.
 //
 // Parameters:
 //   - `aRate`: Time interval to refresh the cache.
 //   - `aAbort`: Channel to receive a signal to abort.
-func (tl *TTrieList) AutoExpire(aRate time.Duration, aAbort chan struct{}) {
+func (tl *tTrieList) AutoExpire(aRate time.Duration, aAbort chan struct{}) {
 	ticker := time.NewTicker(aRate)
 	defer ticker.Stop()
 
@@ -96,6 +92,29 @@ func (tl *TTrieList) AutoExpire(aRate time.Duration, aAbort chan struct{}) {
 	}
 } // AutoExpire()
 
+// `Clone()` creates a deep copy of the Trie.
+//
+// Returns:
+//   - `*tTrieList`: A deep copy of the Trie.
+func (tl *tTrieList) Clone() ICacheList {
+	if nil == tl {
+		return nil
+	}
+
+	tl.RLock()
+	root := tl.tRoot.node.clone()
+	tl.RUnlock()
+	if nil == root {
+		return nil
+	}
+
+	return &tTrieList{
+		tRoot: tRoot{
+			node: root,
+		},
+	}
+} // Clone()
+
 // `Create()` adds a new cache entry for the given hostname.
 //
 // Parameters:
@@ -105,8 +124,8 @@ func (tl *TTrieList) AutoExpire(aRate time.Duration, aAbort chan struct{}) {
 //   - `aTTL`: Time to live for the cache entry.
 //
 // Returns:
-//   - `*TTrieList`: The updated cache list.
-func (tl *TTrieList) Create(aCtx context.Context, aHostname string, aIPs []net.IP, aTTL time.Duration) iCacheList {
+//   - `*tTrieList`: The updated cache list.
+func (tl *tTrieList) Create(aCtx context.Context, aHostname string, aIPs []net.IP, aTTL time.Duration) ICacheList {
 	if nil == tl {
 		return nil
 	}
@@ -126,8 +145,8 @@ func (tl *TTrieList) Create(aCtx context.Context, aHostname string, aIPs []net.I
 //   - `aHostname`: The hostname to remove the cache entry for.
 //
 // Returns:
-//   - `*TTrieList`: The updated trie.
-func (tl *TTrieList) Delete(aCtx context.Context, aHostname string) (rOK bool) {
+//   - `*tTrieList`: The updated Trie.
+func (tl *tTrieList) Delete(aCtx context.Context, aHostname string) (rOK bool) {
 	if nil == tl {
 		return
 	}
@@ -146,7 +165,7 @@ func (tl *TTrieList) Delete(aCtx context.Context, aHostname string) (rOK bool) {
 //
 // Returns:
 //   - `bool`: `true` if the cache list is equal to the given one, `false` otherwise.
-func (tl *TTrieList) Equal(aList *TTrieList) (rOK bool) {
+func (tl *tTrieList) Equal(aList *tTrieList) (rOK bool) {
 	if nil == tl {
 		return (nil == aList)
 	}
@@ -163,10 +182,31 @@ func (tl *TTrieList) Equal(aList *TTrieList) (rOK bool) {
 	return
 } // Equal()
 
+// `Exists()` checks whether the given hostname is cached.
+//
+// Parameters:
+//   - `context.Context`: Timeout context to use for the operation.
+//   - `string`: The hostname to check for.
+//
+// Returns:
+//   - `bool`: `true` if the hostname was found in the cache, `false` otherwise.
+func (tl *tTrieList) Exists(aCtx context.Context, aHostname string) (rOK bool) {
+	if nil == tl {
+		return
+	}
+
+	parts := pattern2parts(aHostname)
+	tl.RLock()
+	_, rOK = tl.node.finalNode(aCtx, parts)
+	tl.RUnlock()
+
+	return
+} // Exists()
+
 // `expireEntries()` removes all expired cache entries.
 //
 // This method is called automatically by the `AutoExpire()` method.
-func (tl *TTrieList) expireEntries() {
+func (tl *tTrieList) expireEntries() {
 	if nil == tl {
 		return
 	}
@@ -183,25 +223,31 @@ func (tl *TTrieList) expireEntries() {
 //   - `aHostname`: The hostname to lookup in the cache.
 //
 // Returns:
-//   - `TIpList`: List of IP addresses for the given hostname.
-//   - `bool`: `true` if the hostname was found in the cache, `false` otherwise.
-func (tl *TTrieList) IPs(aCtx context.Context, aHostname string) ([]net.IP, bool) {
+//   - `rIPs`: List of IP addresses for the given hostname.
+//   - `rOK`: `true` if the hostname was found in the cache, `false` otherwise.
+func (tl *tTrieList) IPs(aCtx context.Context, aHostname string) (rIPs []net.IP, rOK bool) {
 	if nil == tl {
-		return nil, false
+		return
 	}
 
 	tl.RLock()
 	ips := tl.node.Retrieve(aCtx, pattern2parts(aHostname))
+	rOK = (0 < len(ips))
 	tl.RUnlock()
 
-	return ips, (0 < len(ips))
+	if rOK {
+		rIPs = make([]net.IP, len(ips))
+		copy(rIPs, ips)
+	}
+
+	return
 } // IPs()
 
 // `Len()` returns the number of hostname entries in the cache list.
 //
 // Returns:
 //   - `int`: Number of entries in the cache list.
-func (tl *TTrieList) Len() int {
+func (tl *tTrieList) Len() int {
 	if nil == tl {
 		return 0
 	}
@@ -213,12 +259,130 @@ func (tl *TTrieList) Len() int {
 	return patterns
 } // Len()
 
+/* * /
+// `RangeX()` returns a channel that yields all FQDNs in sorted order.
+//
+// Usage: for fqdn := range fqdnList.Range() { ... }
+//
+// The channel is closed automatically when all entries have been yielded.
+func (tl *tTrieList) RangeX(aCtx context.Context) <-chan string {
+	ch := make(chan string)
+	if nil == tl {
+		close(ch)
+		return ch
+	}
+
+	go func() {
+		defer close(ch)
+		tl.RLock()
+		for _, fqdn := range tl.node.allPatterns(aCtx) {
+			ch <- fqdn
+		}
+		tl.RUnlock()
+	}()
+
+	return ch
+} // RangeX()
+/* */
+
+// `Range()` returns a channel that yields all FQDNs in sorted order.
+//
+// Usage: for fqdn := range ICacheList.Range() { ... }
+//
+// The channel is closed automatically when all entries have been yielded.
+//
+// Parameters:
+//   - `aCtx`: Timeout context to use for the operation.
+//
+// Returns:
+//   - `chan string`: Channel that yields all FQDNs in sorted order.
+func (tl *tTrieList) Range(aCtx context.Context) <-chan string {
+	ch := make(chan string)
+	if nil == tl {
+		close(ch)
+		return ch
+	}
+
+	go func() {
+		defer close(ch)
+		tl.RLock()
+		defer tl.RUnlock()
+
+		type tStackEntry struct {
+			node *tCacheNode
+			path tPartsList
+		}
+		stack := []tStackEntry{
+			{node: tl.tRoot.node, path: []string{}},
+		}
+		var ( // avoid repeated allocations during loop
+			cLen, idx                    int
+			entry                        tStackEntry
+			kidNames, newParts, reversed tPartsList
+			label                        string
+		)
+
+		for 0 < len(stack) {
+			// Check for timeout or cancellation
+			if nil != aCtx.Err() {
+				// Leaving the goroutine will close the
+				// channel (due to `defer`).
+				return
+			}
+
+			entry = stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+
+			// Emit FQDN if terminal (i.e. has IP addresses)
+			if 0 < len(entry.node.tCachedIP.tIpList) {
+				// Reverse the path to get the complete
+				// FQDN in original order.
+				reversed = make(tPartsList, len(entry.path))
+				for idx, label = range entry.path {
+					reversed[len(entry.path)-1-idx] = label
+				}
+				ch <- strings.Join(reversed, ".")
+			}
+
+			if cLen = len(entry.node.tChildren); 0 == cLen {
+				continue
+			}
+
+			// Process children in sorted order
+			kidNames = make(tPartsList, 0, cLen)
+			for label = range entry.node.tChildren {
+				kidNames = append(kidNames, label)
+			}
+			if 1 < len(kidNames) {
+				sort.Strings(kidNames)
+			}
+
+			// Push children to stack in reverse-sorted order
+			// (to process them in forward order when popped)
+			for idx = len(kidNames) - 1; 0 <= idx; idx-- {
+				label = kidNames[idx]
+
+				newParts = make(tPartsList, len(entry.path)+1)
+				copy(newParts, entry.path)
+				newParts[len(entry.path)] = label
+
+				stack = append(stack, tStackEntry{
+					node: entry.node.tChildren[label],
+					path: newParts,
+				})
+			}
+		}
+	}()
+
+	return ch
+} // Range()
+
 // `String()` implements the `fmt.Stringer` interface for a string
 // representation of the cache list.
 //
 // Returns:
 //   - `string`: String representation of the cache list.
-func (tl *TTrieList) String() (rStr string) {
+func (tl *tTrieList) String() (rStr string) {
 	if nil == tl {
 		return ""
 	}
@@ -239,15 +403,15 @@ func (tl *TTrieList) String() (rStr string) {
 //   - `aTTL`: Time to live for the cache entry.
 //
 // Returns:
-//   - `*TTrieList`: The updated cache list.
-func (tl *TTrieList) Update(aCtx context.Context, aHostname string, aIPs []net.IP, aTTL time.Duration) iCacheList {
+//   - `*tTrieList`: The updated cache list.
+func (tl *tTrieList) Update(aCtx context.Context, aHostname string, aIPs []net.IP, aTTL time.Duration) ICacheList {
 	if nil == tl {
 		return nil
 	}
 
 	parts := pattern2parts(aHostname)
 	tl.Lock()
-	if cn, ok := tl.node.finalNode(parts); ok {
+	if cn, ok := tl.node.finalNode(aCtx, parts); ok {
 		// There's actually a matching cache entry
 		cn.Update(aCtx, aIPs, aTTL)
 	} else {
