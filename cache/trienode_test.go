@@ -136,6 +136,92 @@ func Test_tCacheNode_allPatterns(t *testing.T) {
 	}
 } // Test_tCacheNode_allPatterns()
 
+func Test_tCacheNode_clone(t *testing.T) {
+	tests := []struct {
+		name string
+		node *tCacheNode
+		want *tCacheNode
+	}{
+		/* */
+		{
+			name: "01 - nil node",
+			node: nil,
+			want: nil,
+		},
+		{
+			name: "02 - empty node",
+			node: newNode(),
+			want: newNode(),
+		},
+		{
+			name: "03 - node with child",
+			node: func() *tCacheNode {
+				n := newNode()
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
+					tIpList{net.ParseIP("3.4.5.6")}, 0)
+				return n
+			}(),
+			want: func() *tCacheNode {
+				n := newNode()
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
+					tIpList{net.ParseIP("3.4.5.6")}, 0)
+				return n
+			}(),
+		},
+		/* */
+		{
+			name: "04 - node with child and grandchildren",
+			node: func() *tCacheNode {
+				n := newNode()
+				n.Create(context.TODO(), tPartsList{"tld"},
+					tIpList{net.ParseIP("4.5.6.1")}, 0)
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
+					tIpList{net.ParseIP("4.5.6.7")}, 0)
+				n.Create(context.TODO(), tPartsList{"tld", "domain", "host"},
+					tIpList{net.ParseIP("4.5.6.8")}, 0)
+				n.Create(context.TODO(), tPartsList{"tld", "domain", "sub"},
+					tIpList{net.ParseIP("4.5.6.9")}, 0)
+				return n
+			}(),
+			want: func() *tCacheNode {
+				n := newNode()
+				n.Create(context.TODO(), tPartsList{"tld"},
+					tIpList{net.ParseIP("4.5.6.1")}, 0)
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
+					tIpList{net.ParseIP("4.5.6.7")}, 0)
+				n.Create(context.TODO(), tPartsList{"tld", "domain", "host"},
+					tIpList{net.ParseIP("4.5.6.8")}, 0)
+				n.Create(context.TODO(), tPartsList{"tld", "domain", "sub"},
+					tIpList{net.ParseIP("4.5.6.9")}, 0)
+				return n
+			}(),
+		},
+		/* */
+		// TODO: Add test cases.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.node.clone()
+			if nil == got {
+				if nil != tc.want {
+					t.Error("tCacheNode.clone() = nil, want non-nil")
+				}
+				return
+			}
+			if nil == tc.want {
+				t.Errorf("tCacheNode.clone() =\n%q\nwant 'nil'",
+					got)
+				return
+			}
+			if !tc.want.Equal(got) {
+				t.Errorf("tCacheNode.clone() =\n%q\nwant\n%q",
+					got, tc.want)
+			}
+		})
+	}
+} // Test_tCacheNode_clone()
+
 func Test_tCacheNode_count(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -161,7 +247,7 @@ func Test_tCacheNode_count(t *testing.T) {
 			node: func() *tCacheNode {
 				n := newNode()
 				n.Create(context.TODO(), tPartsList{"tld"},
-					tIpList{net.ParseIP("1.2.3.4"), net.ParseIP("1.2.3.4")}, 0)
+					tIpList{net.ParseIP("3.4.5.6")}, 0)
 				return n
 			}(),
 			wantNodes:    1,
@@ -172,11 +258,9 @@ func Test_tCacheNode_count(t *testing.T) {
 			node: func() *tCacheNode {
 				n := newNode()
 				n.Create(context.TODO(), tPartsList{"tld"},
-					tIpList{net.ParseIP("1.2.3.4"),
-						net.ParseIP("2.3.4.5")}, 0)
+					tIpList{net.ParseIP("4.3.2.1")}, 0)
 				n.Create(context.TODO(), tPartsList{"tld", "domain"},
-					tIpList{net.ParseIP("3.4.5.6"),
-						net.ParseIP("4.5.6.7")}, 0)
+					tIpList{net.ParseIP("4.5.6.7")}, 0)
 				return n
 			}(),
 			wantNodes:    2,
@@ -187,18 +271,50 @@ func Test_tCacheNode_count(t *testing.T) {
 			node: func() *tCacheNode {
 				n := newNode()
 				n.Create(context.TODO(), tPartsList{"tld"},
-					tIpList{net.ParseIP("1.2.3.4"),
-						net.ParseIP("1.2.3.4")}, 0)
+					tIpList{net.ParseIP("5.4.1.1")}, 0)
 				n.Create(context.TODO(), tPartsList{"tld", "domain"},
-					tIpList{net.ParseIP("1.2.3.4"),
-						net.ParseIP("1.2.3.4")}, 0)
+					tIpList{net.ParseIP("5.4.2.2")}, 0)
 				n.Create(context.TODO(), tPartsList{"tld", "domain", "sub"},
-					tIpList{net.ParseIP("1.2.3.4"),
-						net.ParseIP("1.2.3.4")}, 0)
+					tIpList{net.ParseIP("5.4.3.3")}, 0)
 				return n
 			}(),
 			wantNodes:    3,
 			wantPatterns: 3,
+		},
+		{
+			name: "06 - four patterns with 3rd level siblings",
+			node: func() *tCacheNode {
+				n := newNode()
+				n.Create(context.TODO(), tPartsList{"tld1"},
+					tIpList{net.ParseIP("6.5.1.1")}, 0)
+				n.Create(context.TODO(), tPartsList{"tld1", "domain1"},
+					tIpList{net.ParseIP("6.5.2.2")}, 0)
+				n.Create(context.TODO(), tPartsList{"tld2", "domain2", "sub2"},
+					tIpList{net.ParseIP("6.5.3.3")}, 0)
+				n.Create(context.TODO(), tPartsList{"tld2", "domain2", "sub2", "host2"},
+					tIpList{net.ParseIP("6.5.4.4")}, 0)
+				return n
+			}(),
+			wantNodes:    6,
+			wantPatterns: 4,
+		},
+		/* */
+		{
+			name: "07 - four patterns with 2nd level siblings",
+			node: func() *tCacheNode {
+				n := newNode()
+				n.Create(context.TODO(), tPartsList{"tld"},
+					tIpList{net.ParseIP("7.6.1.1")}, 0)
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
+					tIpList{net.ParseIP("7.6.2.2")}, 0)
+				n.Create(context.TODO(), tPartsList{"tld", "domain", "sub"},
+					tIpList{net.ParseIP("7.6.3.3")}, 0)
+				n.Create(context.TODO(), tPartsList{"tld", "domain", "sub", "host"},
+					tIpList{net.ParseIP("7.6.4.4")}, 0)
+				return n
+			}(),
+			wantNodes:    4,
+			wantPatterns: 4,
 		},
 		/* */
 		// TODO: Add test cases.
@@ -776,7 +892,7 @@ func Test_tCacheNode_finalNode(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			gotNode, gotOK := tc.rootNode.finalNode(tc.partsList)
+			gotNode, gotOK := tc.rootNode.finalNode(context.TODO(), tc.partsList)
 
 			if gotOK != tc.wantOK {
 				t.Errorf("tCacheNode.finalNode() gotOK = '%v', want '%v'",
@@ -1050,6 +1166,23 @@ func Test_tCacheNode_store(t *testing.T) {
 			wantText: "1.2.3.4 domain.tld\n5.6.7.8 domain.tld\n2.3.4.5 host.domain.tld\n6.7.8.9 host.domain.tld\n",
 			wantErr:  false,
 		},
+		{
+			name: "06 - node with multiple children",
+			node: func() *tCacheNode {
+				n := newNode()
+				n.Create(context.TODO(), tPartsList{"tld", "domain1"},
+					tIpList{net.ParseIP("6.0.1.2")}, 0)
+				n.Create(context.TODO(), tPartsList{"tld", "domain1", "host1"},
+					tIpList{net.ParseIP("6.0.2.3"), net.ParseIP("6.1.2.3")}, 0)
+				n.Create(context.TODO(), tPartsList{"tld", "domain2"},
+					tIpList{net.ParseIP("6.2.3.1")}, 0)
+				n.Create(context.TODO(), tPartsList{"tld", "domain2", "host2"},
+					tIpList{net.ParseIP("6.2.2.2"), net.ParseIP("6.2.2.3")}, 0)
+				return n
+			}(),
+			wantText: "6.0.1.2 domain1.tld\n6.0.2.3 host1.domain1.tld\n6.1.2.3 host1.domain1.tld\n6.2.3.1 domain2.tld\n6.2.2.2 host2.domain2.tld\n6.2.2.3 host2.domain2.tld\n",
+			wantErr:  false,
+		},
 		/* */
 		// TODO: Add test cases.
 	}
@@ -1071,6 +1204,59 @@ func Test_tCacheNode_store(t *testing.T) {
 		})
 	}
 } // Test_tCacheNode_store()
+
+func Test_tCacheNode_String(t *testing.T) {
+	tests := []struct {
+		name string
+		node *tCacheNode
+		want string
+	}{
+		/* */
+		{
+			name: "01 - nil node",
+			node: nil,
+			want: "",
+		},
+		{
+			name: "02 - empty node",
+			node: newNode(),
+			want: "",
+		},
+		{
+			name: "03 - node with child",
+			node: func() *tCacheNode {
+				n := newNode()
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
+					tIpList{net.ParseIP("1.2.3.4")}, 0)
+				return n
+			}(),
+			want: "1.2.3.4 domain.tld\n",
+		},
+		{
+			name: "04 - node with child and grandchild",
+			node: func() *tCacheNode {
+				n := newNode()
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
+					tIpList{net.ParseIP("1.2.3.4")}, 0)
+				n.Create(context.TODO(), tPartsList{"tld", "domain", "host"},
+					tIpList{net.ParseIP("2.3.4.5")}, 0)
+				return n
+			}(),
+			want: "1.2.3.4 domain.tld\n2.3.4.5 host.domain.tld\n",
+		},
+		/* */
+		// TODO: Add test cases.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.node.String(); got != tc.want {
+				t.Errorf("tCacheNode.String() =\n%q\nwant\n%q",
+					got, tc.want)
+			}
+		})
+	}
+} // Test_tCacheNode_String()
 
 func Test_tCacheNode_Update(t *testing.T) {
 	tests := []struct {

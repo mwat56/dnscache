@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"sort"
 	"strings"
 	"time"
@@ -19,16 +20,19 @@ import (
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
 type (
-	// `tCachedIP` is a DNS cache entry.
+	//
+	// `tCachedIP` is a DNS cache node.
 	tCachedIP struct {
-		tIpList              // IP addresses for this entry
-		bestBefore time.Time // time after which the entry is invalid
+		tIpList              // IP addresses for this node
+		bestBefore time.Time // time after which the node is invalid
 	}
 
+	//
 	// `tChildren` is a map of children nodes.
 	tChildren map[string]*tCacheNode
 
-	// `tCacheNode` represents a node in the trie.
+	//
+	// `tCacheNode` represents a node in the Trie.
 	//
 	// The node is considered a leaf node if no IPs are assigned,
 	// otherwise it's an end node finishing a hostname pattern and
@@ -89,13 +93,15 @@ func (cn *tCacheNode) allPatterns(aCtx context.Context) (rList tPatternList) {
 	}
 
 	type tStackEntry struct {
-		parts tPartsList  // path in the trie to the node
+		parts tPartsList  // path to the node in the Trie
 		node  *tCacheNode // respective node to process
 	}
 	var (
-		cLen, idx, pLen int
-		kidNames        tPartsList
-		label           string
+		cLen, idx, pLen    int
+		child              *tCacheNode
+		current            tStackEntry
+		kidNames, newParts tPartsList
+		label              string
 	)
 	stack := []tStackEntry{
 		// Push the current node to the stack
@@ -109,7 +115,7 @@ func (cn *tCacheNode) allPatterns(aCtx context.Context) (rList tPatternList) {
 		}
 
 		// Pop the top of the stack
-		current := stack[len(stack)-1]
+		current = stack[len(stack)-1]
 		// Remove the top of the stack
 		stack = stack[:len(stack)-1]
 
@@ -139,19 +145,16 @@ func (cn *tCacheNode) allPatterns(aCtx context.Context) (rList tPatternList) {
 			sort.Strings(kidNames)
 		}
 
-		// Check for timeout or cancellation
-		if nil != aCtx.Err() {
-			return
-		}
-
 		// Push children to stack in reverse-sorted order
 		// (to process them in forward order when popped)
 		for idx = len(kidNames) - 1; 0 <= idx; idx-- {
-			label := kidNames[idx]
-			child := current.node.tChildren[label]
-			newParts := make(tPartsList, len(current.parts)+1)
+			label = kidNames[idx]
+			child = current.node.tChildren[label]
+
+			newParts = make(tPartsList, len(current.parts)+1)
 			copy(newParts, current.parts)
 			newParts[len(current.parts)] = label
+
 			stack = append(stack, tStackEntry{
 				parts: newParts,
 				node:  child,
@@ -162,14 +165,61 @@ func (cn *tCacheNode) allPatterns(aCtx context.Context) (rList tPatternList) {
 	return
 } // allPatterns()
 
-// `count()` returns the number of nodes and patterns in the node's trie.
+// `clone()` creates a deep copy of the node's Trie, using an explicit stack
+// (no recursion).
+//
+// Returns:
+//   - `*tCacheNode`: A deep copy of the node's Trie.
+func (cn *tCacheNode) clone() *tCacheNode {
+	if nil == cn {
+		return nil
+	}
+
+	clone := newNode()
+	type stackEntry struct {
+		src *tCacheNode
+		dst *tCacheNode
+	}
+	stack := []stackEntry{{cn, clone}}
+	var (
+		child, clonedChild *tCacheNode
+		entry              stackEntry
+		label              string
+	)
+
+	for 0 < len(stack) {
+		entry = stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		// Copy all children
+		for label, child = range entry.src.tChildren {
+			if nil == child {
+				continue
+			}
+
+			clonedChild = &tCacheNode{
+				tCachedIP: tCachedIP{
+					tIpList:    child.tCachedIP.tIpList,
+					bestBefore: child.tCachedIP.bestBefore,
+				},
+				tChildren: make(tChildren, len(child.tChildren)),
+			}
+			entry.dst.tChildren[label] = clonedChild
+			stack = append(stack, stackEntry{child, clonedChild})
+		}
+	}
+
+	return clone
+} // clone()
+
+// `count()` returns the number of nodes and patterns in the node's Trie.
 //
 // Parameters:
 //   - `aCtx`: The timeout context to use for the operation.
 //
 // Returns:
-//   - `rNodes`: The number of nodes in the node's trie.
-//   - `rPatterns`: The number of patterns in the node's trie.
+//   - `rNodes`: The number of nodes in the node's Trie.
+//   - `rPatterns`: The number of patterns in the node's Trie.
 func (cn *tCacheNode) count(aCtx context.Context) (rNodes, rPatterns int) {
 	if nil == cn {
 		return
@@ -177,15 +227,15 @@ func (cn *tCacheNode) count(aCtx context.Context) (rNodes, rPatterns int) {
 
 	type (
 		tStackEntry struct {
-			parts tPartsList  // path in the trie to the node
+			parts tPartsList  // path to the node in the Trie
 			node  *tCacheNode // respective node to process
 		}
 	)
 	var (
-		cLen, ipLen int
-		current     tStackEntry
-		label       string
-		kidNames    tPartsList
+		cLen, dec, idx, ipLen int
+		entry                 tStackEntry
+		label                 string
+		kidNames, newParts    tPartsList
 	)
 	stack := []tStackEntry{
 		// Push the current node to the stack
@@ -199,12 +249,12 @@ func (cn *tCacheNode) count(aCtx context.Context) (rNodes, rPatterns int) {
 		}
 
 		// Pop the top of the stack
-		current = stack[len(stack)-1]
+		entry = stack[len(stack)-1]
 		// Remove the top of the stack
 		stack = stack[:len(stack)-1]
 
-		cLen = len(current.node.tChildren)
-		ipLen = len(current.node.tCachedIP.tIpList)
+		cLen = len(entry.node.tChildren)
+		ipLen = len(entry.node.tCachedIP.tIpList)
 		if (0 < cLen) || (0 < ipLen) {
 			// valid node with either children or IPs
 			rNodes++
@@ -214,16 +264,17 @@ func (cn *tCacheNode) count(aCtx context.Context) (rNodes, rPatterns int) {
 			rPatterns++
 		}
 		if 0 == cLen {
-			if 0 < rNodes {
+			if (0 < rNodes) && (0 == dec) {
 				// Un-count the node without children
 				rNodes--
+				dec++
 			}
 			continue
 		}
 
 		// Collect and sort children keys for deterministic order
 		kidNames = make(tPartsList, 0, cLen)
-		for label = range current.node.tChildren {
+		for label = range entry.node.tChildren {
 			kidNames = append(kidNames, label)
 		}
 		if 1 < len(kidNames) {
@@ -232,14 +283,16 @@ func (cn *tCacheNode) count(aCtx context.Context) (rNodes, rPatterns int) {
 
 		// Push children to stack in reverse-sorted order
 		// (to process them in forward order when popped)
-		for idx := len(kidNames) - 1; 0 <= idx; idx-- {
+		for idx = len(kidNames) - 1; 0 <= idx; idx-- {
 			label = kidNames[idx]
-			newParts := make(tPartsList, len(current.parts)+1)
-			copy(newParts, current.parts)
-			newParts[len(current.parts)] = label
+
+			newParts = make(tPartsList, len(entry.parts)+1)
+			copy(newParts, entry.parts)
+			newParts[len(entry.parts)] = label
+
 			stack = append(stack, tStackEntry{
 				parts: newParts,
-				node:  current.node.tChildren[label],
+				node:  entry.node.tChildren[label],
 			})
 		}
 	} // for stack
@@ -247,17 +300,17 @@ func (cn *tCacheNode) count(aCtx context.Context) (rNodes, rPatterns int) {
 	return
 } // count()
 
-// `Create()` inserts a pattern to the node's trie.
+// `Create()` inserts a pattern to the node's Trie.
 //
 // The method returns `true` if at least one part was added in order to
-// have the whole `aPartsList` present in the trie or found an existing
+// have the whole `aPartsList` present in the Trie or found an existing
 // node that already represented the pattern.
 //
 // Parameters:
 //   - `aCtx`: The timeout context to use for the operation.
 //   - `aPartsList`: The list of parts of the pattern to create.
-//   - `aIPs`: The list of IP addresses to store with the cache entry.
-//   - `aTTL`: Time to live for the cache entry.
+//   - `aIPs`: The list of IP addresses to store with the cache node.
+//   - `aTTL`: Time to live for the cache node.
 //
 // Returns:
 //   - `bool`: `true` if a pattern was added, `false` otherwise.
@@ -296,7 +349,7 @@ func (cn *tCacheNode) Create(aCtx context.Context, aPartsList tPartsList, aIPs t
 	return
 } // Create()
 
-// `Delete()` removes path patterns from the node's trie.
+// `Delete()` removes path patterns from the node's Trie.
 //
 // Parameters:
 //   - `aCtx`: The timeout context to use for the operation.
@@ -393,12 +446,12 @@ func (cn *tCacheNode) Equal(aNode *tCacheNode) (rOK bool) {
 		return
 	}
 
-	for label, child := range cn.tChildren {
+	for label, myChild := range cn.tChildren {
 		otherChild, ok := aNode.tChildren[label]
 		if !ok {
 			return
 		}
-		if !child.Equal(otherChild) {
+		if !myChild.Equal(otherChild) {
 			return
 		}
 	}
@@ -407,13 +460,13 @@ func (cn *tCacheNode) Equal(aNode *tCacheNode) (rOK bool) {
 	return
 } // Equal()
 
-// `expire()` removes expired cache entries from the node's trie.
+// `expire()` removes expired cache nodes from the node's Trie.
 //
 // Parameters:
 //   - `aCtx`: The timeout context to use for the operation.
 //
 // Returns:
-//   - `rOK`: `true` if at least one cache entry was removed, `false` otherwise.
+//   - `rOK`: `true` if at least one cache node was removed, `false` otherwise.
 func (cn *tCacheNode) expire(aCtx context.Context) (rOK bool) {
 	if nil == cn {
 		return
@@ -483,12 +536,13 @@ func (cn *tCacheNode) expire(aCtx context.Context) (rOK bool) {
 // `finalNode()` returns the node that matches the final part of ´aPartsList`.
 //
 // Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
 //   - `aPartsList`: The list of parts of the pattern to check.
 //
 // Returns:
 //   - `rNode`: The node that matches the pattern, `nil` otherwise.
-//   - `rOK`: `true` if the pattern is in the node's trie, `false` otherwise.
-func (cn *tCacheNode) finalNode(aPartsList tPartsList) (rNode *tCacheNode, rOK bool) {
+//   - `rOK`: `true` if the pattern is in the node's Trie, `false` otherwise.
+func (cn *tCacheNode) finalNode(aCtx context.Context, aPartsList tPartsList) (rNode *tCacheNode, rOK bool) {
 	if nil == cn {
 		return
 	}
@@ -502,6 +556,11 @@ func (cn *tCacheNode) finalNode(aPartsList tPartsList) (rNode *tCacheNode, rOK b
 
 	current := cn
 	for depth, label = range aPartsList {
+		// Check for timeout or cancellation
+		if nil != aCtx.Err() {
+			return
+		}
+
 		// Check for a child with the next label
 		if child, ok = current.tChildren[label]; !ok {
 			return
@@ -526,10 +585,22 @@ func (cn *tCacheNode) finalNode(aPartsList tPartsList) (rNode *tCacheNode, rOK b
 	return
 } // finalNode()
 
-// `isExpired()` returns `true` if the cache entry is expired.
+// `First()` returns the first IP address in the cache node.
 //
 // Returns:
-//   - `bool`: `true` if the cache entry is expired, `false` otherwise.
+//   - `net.IP`: First IP address in the cache node.
+func (cn *tCacheNode) First() net.IP {
+	if nil == cn {
+		return nil
+	}
+
+	return cn.tCachedIP.tIpList.First()
+} // First()
+
+// `isExpired()` returns `true` if the cache node is expired.
+//
+// Returns:
+//   - `bool`: `true` if the cache node is expired, `false` otherwise.
 func (cn *tCacheNode) isExpired() bool {
 	if nil == cn {
 		return true
@@ -538,7 +609,19 @@ func (cn *tCacheNode) isExpired() bool {
 	return cn.tCachedIP.bestBefore.Before(time.Now())
 } // isExpired()
 
-// `match()` checks whether the node's trie contains the given pattern and
+// `Len()` returns the number of IP addresses in the cache node.
+//
+// Returns:
+//   - `int`: Number of IP addresses in the cache node.
+func (cn *tCacheNode) Len() int {
+	if nil == cn {
+		return 0
+	}
+
+	return cn.tCachedIP.tIpList.Len()
+} // Len()
+
+// `match()` checks whether the node's Trie contains the given pattern and
 // returns the node that matched the pattern.
 //
 // Parameters:
@@ -547,7 +630,7 @@ func (cn *tCacheNode) isExpired() bool {
 //
 // Returns:
 //   - `rNode`: The node that matched the pattern, `nil` otherwise.
-//   - `rOK`: `true` if the pattern is in the node's trie, `false` otherwise.
+//   - `rOK`: `true` if the pattern is in the node's Trie, `false` otherwise.
 func (cn *tCacheNode) match(aCtx context.Context, aPartsList tPartsList) (rNode *tCacheNode, rOK bool) {
 	if (nil == cn) || (0 == len(aPartsList)) {
 		return
@@ -556,10 +639,10 @@ func (cn *tCacheNode) match(aCtx context.Context, aPartsList tPartsList) (rNode 
 		// No children, thus no match
 		return
 	}
-	rNode, rOK = cn.finalNode(aPartsList)
+	rNode, rOK = cn.finalNode(aCtx, aPartsList)
 
 	return
-} // Match()
+} // match()
 
 // `Retrieve()` returns the IP addresses for the given pattern.
 //
@@ -574,7 +657,7 @@ func (cn *tCacheNode) Retrieve(aCtx context.Context, aPartsList tPartsList) (rIP
 		return
 	}
 
-	if node, ok := cn.finalNode(aPartsList); ok {
+	if node, ok := cn.finalNode(aCtx, aPartsList); ok {
 		rIPs = node.tCachedIP.tIpList
 	}
 
@@ -592,7 +675,7 @@ func (cn *tCacheNode) Retrieve(aCtx context.Context, aPartsList tPartsList) (rIP
 // are written in sorted order.
 //
 // The method is not thread-safe in itself but expects to be RLocked
-// by the calling trie instance.
+// by the calling Trie instance.
 //
 // If `aWriter` returns an error during processing, the method stops
 // writing and returns that error to the caller.
@@ -614,15 +697,20 @@ func (cn *tCacheNode) store(aCtx context.Context, aWriter io.Writer) error {
 		}
 	)
 	var (
-		cLen, pLen int
-		err        error
-		fqdn       string
+		cLen, idx, pLen              int
+		entry                        tStackEntry
+		err                          error
+		fqdn, label                  string
+		ip                           net.IP
+		kidNames, newParts, reversed tPartsList
 	)
 
-	stack := []tStackEntry{{tPartsList{}, cn}}
+	stack := []tStackEntry{
+		{tPartsList{}, cn},
+	}
 	for 0 < len(stack) {
 		// Pop from stack
-		entry := stack[len(stack)-1]
+		entry = stack[len(stack)-1]
 		// Remove current entry from stack
 		stack = stack[:len(stack)-1]
 
@@ -634,14 +722,14 @@ func (cn *tCacheNode) store(aCtx context.Context, aWriter io.Writer) error {
 		if 0 < len(entry.node.tCachedIP.tIpList) { // valid end node
 			// Reverse path to original FQDN format
 			pLen = len(entry.parts)
-			reversed := make(tPartsList, pLen)
-			for idx, part := range entry.parts {
-				reversed[pLen-1-idx] = part
+			reversed = make(tPartsList, pLen)
+			for idx, label = range entry.parts {
+				reversed[pLen-1-idx] = label
 			}
 			fqdn = strings.Join(reversed, ".")
 
 			// Write hosts(5) style with IP addresses and FQDN
-			for _, ip := range entry.node.tCachedIP.tIpList {
+			for _, ip = range entry.node.tCachedIP.tIpList {
 				if _, err = fmt.Fprintf(aWriter, "%s %s\n", ip.String(), fqdn); nil != err {
 					return err
 				}
@@ -653,8 +741,8 @@ func (cn *tCacheNode) store(aCtx context.Context, aWriter io.Writer) error {
 		}
 
 		// Collect and sort children kidNames
-		kidNames := make(tPartsList, 0, cLen)
-		for label := range entry.node.tChildren {
+		kidNames = make(tPartsList, 0, cLen)
+		for label = range entry.node.tChildren {
 			kidNames = append(kidNames, label)
 		}
 		if 1 < len(kidNames) {
@@ -668,14 +756,14 @@ func (cn *tCacheNode) store(aCtx context.Context, aWriter io.Writer) error {
 
 		// Push children in reverse-sorted order for
 		// correct processing sequence
-		for idx := len(kidNames) - 1; 0 <= idx; idx-- {
-			label := kidNames[idx]
-			newPath := make(tPartsList, len(entry.parts)+1)
-			copy(newPath, entry.parts)
-			newPath[len(entry.parts)] = label
+		for idx = len(kidNames) - 1; 0 <= idx; idx-- {
+			label = kidNames[idx]
+			newParts = make(tPartsList, len(entry.parts)+1)
+			copy(newParts, entry.parts)
+			newParts[len(entry.parts)] = label
 
 			stack = append(stack, tStackEntry{
-				parts: newPath,
+				parts: newParts,
 				node:  entry.node.tChildren[label],
 			})
 		}
@@ -700,15 +788,15 @@ func (cn *tCacheNode) String() string {
 	return builder.String()
 } // String()
 
-// `Update()` updates the cache entry with the given IP addresses returning
+// `Update()` updates the cache node with the given IP addresses returning
 // the updated cache node.
 //
 // If the given IP list is empty, the cache node's IP list is cleared/removed.
 //
 // Parameters:
 //   - `aCtx`: The timeout context to use for the operation.
-//   - `aIPs`: List of IP addresses to Update the cache entry with.
-//   - `aTTL`: Time to live for the cache entry.
+//   - `aIPs`: List of IP addresses to Update the cache node with.
+//   - `aTTL`: Time to live for the cache node.
 //
 // Returns:
 //   - `iCacheNode`: The updated cache node.
