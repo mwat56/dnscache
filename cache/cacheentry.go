@@ -26,12 +26,15 @@ const (
 )
 
 type (
+	//
 	// `tCacheEntry` is a DNS cache entry.
 	tCacheEntry struct {
 		ips        tIpList   // IP addresses for this entry
 		bestBefore time.Time // time after which the entry is not valid
 	}
 )
+
+// ---------------------------------------------------------------------------
 
 // `init()` ensures proper interface implementation.
 func init() {
@@ -43,7 +46,7 @@ func init() {
 // ---------------------------------------------------------------------------
 // `tCacheEntry` methods:
 
-// `clone()` returns a deep copy of the cache entry.
+// `clone()` creates a deep copy of the cache entry.
 //
 // Returns:
 //   - `*tCacheEntry`: A deep copy of the cache entry.
@@ -52,15 +55,16 @@ func (ce *tCacheEntry) clone() *tCacheEntry {
 		return nil
 	}
 
-	result := &tCacheEntry{
+	clone := &tCacheEntry{
 		bestBefore: ce.bestBefore,
 	}
-	if (nil != ce.ips) && (0 < len(ce.ips)) {
-		result.ips = make(tIpList, len(ce.ips))
-		copy(result.ips, ce.ips)
+
+	if iLen := len(ce.ips); 0 < iLen {
+		clone.ips = make(tIpList, iLen)
+		copy(clone.ips, ce.ips)
 	}
 
-	return result
+	return clone
 } // clone()
 
 // `Create()` creates a cache entry with the given IP addresses and TTL.
@@ -83,7 +87,7 @@ func (ce *tCacheEntry) Create(aCtx context.Context, aPartsList tPartsList, aIPs 
 	if nil == ce {
 		ce = &tCacheEntry{}
 	}
-	ce = ce.Update(aIPs, aTTL).(*tCacheEntry)
+	ce = ce.Update(aCtx, aIPs, aTTL).(*tCacheEntry)
 
 	return (nil != ce)
 } // Create()
@@ -219,13 +223,17 @@ func (ce *tCacheEntry) String() string {
 //
 // If the given IP list is empty, the cache entry's IP list is cleared/removed.
 //
+// NOTE: This method's implementation ignores  the `Context` argument
+// required by the `iCacheNode` interface.`
+//
 // Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
 //   - `aIPs`: List of IP addresses to Update the cache entry with.
 //   - `aTTL`: Time to live for the cache entry.
 //
 // Returns:
 //   - `iCacheNode`: The updated cache entry.
-func (ce *tCacheEntry) Update(aIPs tIpList, aTTL time.Duration) iCacheNode {
+func (ce *tCacheEntry) Update(aCtx context.Context, aIPs tIpList, aTTL time.Duration) iCacheNode {
 	if nil == ce {
 		return nil
 	}

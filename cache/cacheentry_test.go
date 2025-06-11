@@ -571,7 +571,7 @@ func Test_tCacheEntry_update(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			gotI := tc.ce.Update(tc.newIPs, time.Minute)
+			gotI := tc.ce.Update(context.TODO(), tc.newIPs, time.Minute)
 			got := gotI.(*tCacheEntry)
 
 			ok := slices.EqualFunc(tc.ce.ips, got.ips, func(ip1, ip2 net.IP) bool {
