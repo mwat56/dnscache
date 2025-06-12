@@ -15,24 +15,24 @@ import (
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
 const (
-	// `poolDropMask` is the bit mask to use for limiting the pool returns.
-	poolDropMask = 7 // 0111
+	// `triePoolDropMask` is the bit mask to use for limiting the pool returns.
+	triePoolDropMask = 7 // 0111
 
-	// `poolInitSize` is the number of items to pre-allocate for the
+	// `triePoolInitSize` is the number of items to pre-allocate for the
 	// pool during initialisation.
 	// Four times this value is used as the pool's maximum size.
-	poolInitSize = 1 << 9 // 512
+	triePoolInitSize = 1 << 9 // 512
 )
 
 type (
-	// `tPoolMetrics` contains the metrics data for the pool.
+	// `tTriePoolMetrics` contains the metrics data for the pool.
 	//
 	// These are the fields providing the metrics data:
 	//
 	//   - `Created`: Number of items created by the pool.
 	//   - `Returned`: Number of items returned to the pool.
 	//   - `Size`: Current number of items in the pool.
-	tPoolMetrics struct {
+	tTriePoolMetrics struct {
 		Created  uint32
 		Returned uint32
 		Size     int
@@ -43,10 +43,14 @@ type (
 	// The pool is inherently thread-safe. Its size is fixed and can't
 	// be changed after creation.
 	//
-	// The pool's factory function `New()` is called to create new items.
+	// The pool's `get()` and `new()` methods return an unspecified item
+	// (`any`) from the pool and the internal channel accepts `any` item.
+	// That way the constructor function (calling the pool's `get()`
+	// method) can differentiate between an item returned by the pool
+	// and a newly created one.
 	//
 	tTriePool struct {
-		New      func() any    // Factory function
+		new      func() any    // Factory function
 		nodes    chan any      // Bounded channel
 		created  atomic.Uint32 // Number of items created
 		returned atomic.Uint32 // Number of items returned
@@ -54,7 +58,7 @@ type (
 )
 
 var (
-	// `triePool` is the running pool of `tTrieNode` instances.
+	// `triePool` is the active pool of `tTrieNode` instances.
 	triePool *tTriePool
 
 	// Make sure, the trie node pool is only initialised once.
@@ -66,80 +70,80 @@ var (
 
 // `init()` pre-allocates some nodes for the pool.
 func init() {
-	initReal()
+	initTriePool()
 } // init()
 
-// `initReal()` pre-allocates some nodes for the pool.
+// `initTriePool()` pre-allocates some nodes for the pool.
 //
 // This function is called only once during package initialisation.
 //
 // During unit testing, this function could be called manually.
-func initReal() {
+func initTriePool() {
 	triePoolInit.Do(func() {
 		triePool = &tTriePool{
-			nodes: make(chan any, int(poolInitSize<<2)),
-			New: func() any {
+			nodes: make(chan any, int(triePoolInitSize<<2)),
+			new: func() any {
 				node := &tTrieNode{tChildren: make(tChildren)}
 				triePool.created.Add(1)
-				/*TODO: Go 1.24:
-				runtime.AddCleanup(node, func() {
-					pool.Put(node)
-				})
-				*/
+				//TODO: Go 1.24:
+				// runtime.AddCleanup(node, func() {
+				// 	pool.put(node)
+				// })
 				return node
 			},
 		}
 
-		for range poolInitSize {
+		for range triePoolInitSize {
 			// Pre-allocate some nodes for the pool:
-			triePool.Put(&tTrieNode{tChildren: make(tChildren)})
+			triePool.put(&tTrieNode{tChildren: make(tChildren)})
 		}
 	}) // triePoolInit.Do()
-} // initReal()
+} // initTriePool()
 
 // ---------------------------------------------------------------------------
 // `tTriePool` methods:
 
-// `Get()` returns an item from the pool.
+// `get()` returns an item from the pool.
 //
 // If the pool is empty, a new item is created.
 //
 // Returns:
 //   - `any`: An item from the pool.
-func (np *tTriePool) Get() any {
-	if nil == np {
-		initReal() // initialise the node pool
-		np = triePool
+func (tp *tTriePool) get() any {
+	if nil == tp {
+		initTriePool() // initialise the node pool
+		tp = triePool
 	}
 
 	select {
-	case item := <-np.nodes:
-		return item
+	case node := <-tp.nodes:
+		return node
 	default:
-		return np.New()
+		return tp.new()
 	}
-} // Get()
+} // get()
 
-// `Put()` returns an item to the pool.
+// `put()` returns an item to the pool.
 //
 // If the pool is full, the item is dropped.
 //
 // Parameters:
 //   - `aNode`: The node to return to the pool.
-func (np *tTriePool) Put(aNode *tTrieNode) {
-	if nil == np {
-		initReal() // initialise the node pool
-		np = triePool
+func (tp *tTriePool) put(aNode *tTrieNode) {
+	if nil == tp {
+		initTriePool() // initialise the node pool
+		tp = triePool
 	}
-	if (np.returned.Add(1) & poolDropMask) == poolDropMask {
+	if (tp.returned.Add(1) & triePoolDropMask) == triePoolDropMask {
 		// Drop the node if the drop mask matches.
 		// This leaves the given `aNode` for GC.
 		// With a drop mask of `7` (0111) we drop 1 in 8 nodes.
+		runtime.GC()
 		return
 	}
 
 	select {
-	case np.nodes <- aNode:
+	case tp.nodes <- aNode:
 		// Item was added to pool
 		runtime.Gosched()
 
@@ -147,17 +151,17 @@ func (np *tTriePool) Put(aNode *tTrieNode) {
 		// Drop if pool is full
 		runtime.Gosched()
 	}
-} // Put()
+} // put()
 
 // ---------------------------------------------------------------------------
 // `tTrieNode` constructor:
 
-// `newTrieNode()` creates a new `tTrieNode` instance.
+// `newTrieNode()` returns a new `tTrieNode` instance.
 //
 // Returns:
 //   - `*tTrieNode`: A new `tTrieNode` instance.
 func newTrieNode() *tTrieNode {
-	node, ok := triePool.Get().(*tTrieNode)
+	node, ok := triePool.get().(*tTrieNode)
 	if ok {
 		// Clear/reset the old field values
 		node.tCachedIP = tCachedIP{}
@@ -174,24 +178,22 @@ func newTrieNode() *tTrieNode {
 // ---------------------------------------------------------------------------
 // Helper functions:
 
-// `poolMetrics()` returns the current pool metrics.
+// `triePoolMetrics()` returns the current pool metrics.
 //
 // Returns:
-//   - `rCreated`: Number of nodes created by the pool.
-//   - `rReturned`: Number of nodes returned to the pool.
-//   - `rSize`: Current number of items in the pool.
-func poolMetrics() *tPoolMetrics {
+//   - `*tTriePoolMetrics`: Current pool metrics.
+func triePoolMetrics() *tTriePoolMetrics {
 	if nil == triePool {
-		initReal() // initialise the node pool
+		initTriePool() // initialise the node pool
 	}
-	np := triePool
+	tp := triePool
 
-	return &tPoolMetrics{
-		Created:  np.created.Load(),
-		Returned: np.returned.Load(),
-		Size:     len(np.nodes),
+	return &tTriePoolMetrics{
+		Created:  tp.created.Load(),
+		Returned: tp.returned.Load(),
+		Size:     len(tp.nodes),
 	}
-} // poolMetrics()
+} // triePoolMetrics()
 
 // `putNode()` returns a node to the pool.
 //
@@ -200,7 +202,7 @@ func poolMetrics() *tPoolMetrics {
 func putNode(aNode *tTrieNode) {
 	// We can't clear the node's fields yet since it might
 	// still be used by another list or goroutine.
-	triePool.Put(aNode)
+	triePool.put(aNode)
 } // putNode()
 
 /* _EoF_ */

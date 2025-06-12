@@ -12,19 +12,19 @@ import (
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
-func Test_newTrieNode(t *testing.T) {
-	initTriePool() // initialise the node pool
+func Test_newMapEntry(t *testing.T) {
+	initEntryPool() // initialise the entry pool
 	tests := []struct {
-		name     string
-		wantNode *tTrieNode
+		name      string
+		wantEntry *tMapEntry
 	}{
 		{
-			name:     "01 - empty node",
-			wantNode: &tTrieNode{},
+			name:      "01 - empty entry",
+			wantEntry: &tMapEntry{},
 		},
 		{
-			name:     "02 - new node",
-			wantNode: newTrieNode(),
+			name:      "02 - new entry",
+			wantEntry: newMapEntry(),
 		},
 
 		// TODO: Add test cases.
@@ -32,32 +32,28 @@ func Test_newTrieNode(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			gotNode := newTrieNode()
+			gotEntry := newMapEntry()
 
-			if nil == gotNode {
-				if nil != tc.wantNode {
-					t.Error("newTrieNode() = nil, want non-nil")
+			if nil == gotEntry {
+				if nil != tc.wantEntry {
+					t.Error("newMapEntry() = nil, want non-nil")
 				}
 				return
 			}
-			if nil == tc.wantNode {
-				t.Errorf("newTrieNode() =\n%v\nwant 'nil'",
-					gotNode)
+			if nil == tc.wantEntry {
+				t.Errorf("newMapEntry() =\n%v\nwant 'nil'",
+					gotEntry)
 				return
 			}
-			if 0 != len(gotNode.tChildren) {
-				t.Errorf("newTrieNode() = %v, want empty children",
-					gotNode.tChildren)
-			}
-			if !tc.wantNode.Equal(gotNode) {
-				t.Errorf("newTrieNode() =\n%q\nwant\n%q",
-					gotNode.String(), tc.wantNode.String())
+			if !tc.wantEntry.Equal(gotEntry) {
+				t.Errorf("newMapEntry() =\n%q\nwant\n%q",
+					gotEntry, tc.wantEntry)
 			}
 		})
 	}
-} // Test_newTrieNode()
+} // Test_newMapEntry()
 
-func Test_nodePoolMetrics(t *testing.T) {
+func Test_entryPoolMetrics(t *testing.T) {
 	clear := func() {
 		// These tests would succeed only if the test was run as part
 		// of only this file's tests, but would fail when run as part
@@ -66,81 +62,81 @@ func Test_nodePoolMetrics(t *testing.T) {
 		// influenced by other tests. To circumvent this, we reset the
 		// pool's metrics to a known state: empty pool, no creations
 		// or returns.
-		np := triePool
-		for range len(np.nodes) {
-			_ = np.get()
+		ep := mapPool
+		for range len(ep.entries) {
+			_ = ep.get()
 		}
-		np.created.Store(0)
-		np.returned.Store(0)
+		ep.created.Store(0)
+		ep.returned.Store(0)
 	}
 
 	tests := []struct {
 		name    string
 		prepare func()
-		want    *tTriePoolMetrics
+		want    *tEntryPoolMetrics
 	}{
 		{
 			name:    "01 - empty pool",
 			prepare: clear,
-			want: &tTriePoolMetrics{
+			want: &tEntryPoolMetrics{
 				Created:  0,
 				Returned: 0,
 				Size:     0,
 			},
 		},
 		{
-			name: "02 - pool with one node",
+			name: "02 - pool with one entry",
 			prepare: func() {
 				clear()
-				_ = newTrieNode()
+				_ = newMapEntry()
 			},
-			want: &tTriePoolMetrics{
+			want: &tEntryPoolMetrics{
 				Created:  1,
 				Returned: 0,
 				Size:     0,
 			},
 		},
 		{
-			name: "03 - pool with two nodes",
+			name: "03 - pool with two entries",
 			prepare: func() {
 				clear()
-				_ = newTrieNode()
-				n2 := newTrieNode()
-				triePool.put(n2)
+				_ = newMapEntry()
+				e2 := newMapEntry()
+				mapPool.put(e2)
 			},
-			want: &tTriePoolMetrics{
+			want: &tEntryPoolMetrics{
 				Created:  2,
 				Returned: 1,
 				Size:     1,
 			},
 		},
 		{
-			name: "04 - pool with two nodes",
+			name: "04 - pool with two entries",
 			prepare: func() {
 				clear()
-				n1 := newTrieNode()
-				n2 := newTrieNode()
-				triePool.put(n1)
-				triePool.put(n2)
+				e1 := newMapEntry()
+				e2 := newMapEntry()
+				mapPool.put(e1)
+				mapPool.put(e2)
 			},
-			want: &tTriePoolMetrics{
+			want: &tEntryPoolMetrics{
 				Created:  2,
 				Returned: 2,
 				Size:     2,
 			},
 		},
 		{
-			name: "05 - pool with three nodes",
+			name: "05 - pool with three entries",
 			prepare: func() {
 				clear()
-				n1 := newTrieNode()
-				_ = newTrieNode()
-				n2 := newTrieNode()
-				_ = newTrieNode()
-				triePool.put(n1)
-				triePool.put(n2)
+				e1 := newMapEntry()
+				_ = newMapEntry()
+				e2 := newMapEntry()
+				_ = newMapEntry()
+				mapPool.put(e1)
+				mapPool.put(e2)
 			},
-			want: &tTriePoolMetrics{
+			want: &tEntryPoolMetrics{
 				Created:  4,
 				Returned: 2,
 				Size:     2,
@@ -155,33 +151,33 @@ func Test_nodePoolMetrics(t *testing.T) {
 			if nil != tc.prepare {
 				tc.prepare()
 			}
-			got := triePoolMetrics()
+			got := entryPoolMetrics()
 
 			if nil == got {
 				if nil != tc.want {
-					t.Error("nodePoolMetrics() = nil, want non-nil")
+					t.Error("entryPoolMetrics() = nil, want non-nil")
 				}
 				return
 			}
 			if nil == tc.want {
-				t.Errorf("nodePoolMetrics() =\n%v\nwant 'nil'",
+				t.Errorf("entryPoolMetrics() =\n%v\nwant 'nil'",
 					got)
 				return
 			}
 			if got.Created != tc.want.Created {
-				t.Errorf("nodePoolMetrics() Created = %d, want %d",
+				t.Errorf("entryPoolMetrics() Created = %d, want %d",
 					got.Created, tc.want.Created)
 			}
 			if got.Returned != tc.want.Returned {
-				t.Errorf("nodePoolMetrics() Returned = %d, want %d",
+				t.Errorf("entryPoolMetrics() Returned = %d, want %d",
 					got.Returned, tc.want.Returned)
 			}
 			if got.Size != tc.want.Size {
-				t.Errorf("nodePoolMetrics() Size = %d, want %d",
+				t.Errorf("entryPoolMetrics() Size = %d, want %d",
 					got.Size, tc.want.Size)
 			}
 		})
 	}
-} // Test_nodePoolMetrics()
+} // Test_entryPoolMetrics()
 
 /* _EoF_ */

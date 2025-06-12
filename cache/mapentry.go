@@ -52,9 +52,8 @@ func (ce *tMapEntry) clone() *tMapEntry {
 		return nil
 	}
 
-	clone := &tMapEntry{
-		bestBefore: ce.bestBefore,
-	}
+	clone := newMapEntry()
+	clone.bestBefore = ce.bestBefore
 
 	if iLen := len(ce.ips); 0 < iLen {
 		clone.ips = make(tIpList, iLen)
@@ -82,7 +81,7 @@ func (ce *tMapEntry) clone() *tMapEntry {
 //   - `bool`: `true` if the cache entry was created, `false` otherwise.
 func (ce *tMapEntry) Create(aCtx context.Context, aPartsList tPartsList, aIPs tIpList, aTTL time.Duration) bool {
 	if nil == ce {
-		ce = &tMapEntry{}
+		ce = newMapEntry()
 	}
 	ce = ce.Update(aCtx, aIPs, aTTL).(*tMapEntry)
 
@@ -129,10 +128,10 @@ func (ce *tMapEntry) Equal(aEntry *tMapEntry) bool {
 	if ce == aEntry {
 		return true
 	}
-	if nil == ce.ips {
-		return (nil == aEntry.ips)
+	if 0 == len(ce.ips) {
+		return (0 == len(aEntry.ips))
 	}
-	if nil == aEntry.ips {
+	if 0 == len(aEntry.ips) {
 		return false
 	}
 	if len(ce.ips) != len(aEntry.ips) {

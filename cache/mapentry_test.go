@@ -17,7 +17,7 @@ import (
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
-func Test_tCacheEntry_clone(t *testing.T) {
+func Test_tMapEntry_clone(t *testing.T) {
 	tc1 := tIpList{
 		net.ParseIP("192.168.1.1"),
 		net.ParseIP("192.168.1.2"),
@@ -76,9 +76,9 @@ func Test_tCacheEntry_clone(t *testing.T) {
 			}
 		})
 	}
-} // Test_tCacheEntry_clone()
+} // Test_tMapEntry_clone()
 
-func Test_tCacheEntry_Create(t *testing.T) {
+func Test_tMapEntry_Create(t *testing.T) {
 	type tArgs struct {
 		aIPs tIpList
 		aTTL time.Duration
@@ -126,9 +126,9 @@ func Test_tCacheEntry_Create(t *testing.T) {
 			}
 		})
 	}
-} // Test_tCacheEntry_Create()
+} // Test_tMapEntry_Create()
 
-func TestTCacheEntry_Delete(t *testing.T) {
+func Test_tMapEntry_Delete(t *testing.T) {
 	type tArgs struct {
 		in0 context.Context
 		in1 tPartsList
@@ -161,21 +161,21 @@ func TestTCacheEntry_Delete(t *testing.T) {
 
 			if nil != tc.entry {
 				if !tc.entry.ips.Equal(tIpList{}) {
-					t.Error("TCacheEntry.Delete() did not clear IPs")
+					t.Error("tMapEntry.Delete() did not clear IPs")
 				}
 				if !tc.entry.bestBefore.IsZero() {
-					t.Error("TCacheEntry.Delete() did not clear bestBefore")
+					t.Error("tMapEntry.Delete() did not clear bestBefore")
 				}
 			}
 			if got != tc.want {
-				t.Errorf("TCacheEntry.Delete() = '%v', want '%v'",
+				t.Errorf("tMapEntry.Delete() = '%v', want '%v'",
 					got, tc.want)
 			}
 		})
 	}
-} // TestTCacheEntry_Delete()
+} // Test_tMapEntry_Delete()
 
-func Test_tCacheEntry_Equal(t *testing.T) {
+func Test_tMapEntry_Equal(t *testing.T) {
 	ipl1 := tIpList{
 		net.ParseIP("192.168.1.1"),
 		net.ParseIP("192.168.1.2"),
@@ -199,6 +199,7 @@ func Test_tCacheEntry_Equal(t *testing.T) {
 		other *tMapEntry
 		want  bool
 	}{
+		/* */
 		{
 			name:  "01 - nil ce and oc",
 			ce:    nil,
@@ -246,16 +247,6 @@ func Test_tCacheEntry_Equal(t *testing.T) {
 		{
 			name: "07 - not equal lists",
 			ce: &tMapEntry{
-				ips: nil,
-			},
-			other: &tMapEntry{
-				ips: tIpList{},
-			},
-			want: false,
-		},
-		{
-			name: "08 - not equal lists",
-			ce: &tMapEntry{
 				ips: ipl2,
 			},
 			other: &tMapEntry{
@@ -273,6 +264,7 @@ func Test_tCacheEntry_Equal(t *testing.T) {
 			},
 			want: false,
 		},
+		/* */
 
 		// TODO: Add test cases.
 	}
@@ -280,15 +272,16 @@ func Test_tCacheEntry_Equal(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got := tc.ce.Equal(tc.other)
+
 			if got != tc.want {
 				t.Errorf("tMapEntry.Equal() = '%v', want '%v'",
 					got, tc.want)
 			}
 		})
 	}
-} // Test_tCacheEntry_Equal()
+} // Test_tMapEntry_Equal()
 
-func Test_tCacheEntry_isExpired(t *testing.T) {
+func Test_tMapEntry_isExpired(t *testing.T) {
 	tests := []struct {
 		name        string
 		ce          *tMapEntry
@@ -368,9 +361,9 @@ func Test_tCacheEntry_isExpired(t *testing.T) {
 			}
 		})
 	}
-} // Test_tCacheEntry_isExpired()
+} // Test_tMapEntry_isExpired()
 
-func Test_tCacheEntry_Retrieve(t *testing.T) {
+func Test_tMapEntry_Retrieve(t *testing.T) {
 	type tArgs struct {
 		in0 context.Context
 		in1 tPartsList
@@ -436,9 +429,9 @@ func Test_tCacheEntry_Retrieve(t *testing.T) {
 			}
 		})
 	}
-} // Test_tCacheEntry_Retrieve()
+} // Test_tMapEntry_Retrieve()
 
-func Test_tCacheEntry_String(t *testing.T) {
+func Test_tMapEntry_String(t *testing.T) {
 	t1 := time.Now()
 	tc1 := tIpList{
 		net.ParseIP("192.168.1.1"),
@@ -486,9 +479,9 @@ func Test_tCacheEntry_String(t *testing.T) {
 			}
 		})
 	}
-} // Test_tCacheEntry_String()
+} // Test_tMapEntry_String()
 
-func Test_tCacheEntry_update(t *testing.T) {
+func Test_tMapEntry_update(t *testing.T) {
 	tests := []struct {
 		name   string
 		ce     *tMapEntry
@@ -583,6 +576,6 @@ func Test_tCacheEntry_update(t *testing.T) {
 			}
 		})
 	}
-} // Test_tCacheEntry_update()
+} // Test_tMapEntry_update()
 
 /* _EoF_ */

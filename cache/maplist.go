@@ -146,9 +146,11 @@ func (cl *tMapList) Delete(aCtx context.Context, aHostname string) (rOK bool) {
 
 	cl.Lock()
 	if ce, ok := cl.Cache[aHostname]; ok {
-		rOK = ce.Delete(aCtx, nil)
-		//TODO: return `ce` to pool
-		delete(cl.Cache, aHostname)
+		if rOK = ce.Delete(aCtx, nil); rOK {
+			//rReturn `ce` to pool
+			putEntry(ce)
+			delete(cl.Cache, aHostname)
+		}
 	}
 	cl.Unlock()
 
@@ -229,6 +231,7 @@ func (cl *tMapList) expireEntries() {
 	clone := maps.Clone(cl.Cache)
 	for hostname, ce := range clone {
 		if ce.isExpired() {
+			putEntry(ce)
 			cl.Lock()
 			delete(cl.Cache, hostname)
 			cl.Unlock()
@@ -371,7 +374,7 @@ func (cl *tMapList) Update(aCtx context.Context, aHostname string, aIPs []net.IP
 		return cl
 	}
 
-	ce := &tMapEntry{}
+	ce := newMapEntry()
 	cl.Lock()
 	cl.Cache[aHostname] = ce.Update(aCtx, aIPs, aTTL).(*tMapEntry)
 	cl.Unlock()
