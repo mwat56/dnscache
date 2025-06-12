@@ -212,45 +212,30 @@ func (cn *tTrieNode) count(aCtx context.Context) (rNodes, rPatterns int) {
 		return
 	}
 
-	type (
-		tStackEntry struct {
-			parts tPartsList // path to the node in the Trie
-			node  *tTrieNode // respective node to process
-		}
-	)
 	var (
-		cLen, dec, idx, ipLen int
-		entry                 tStackEntry
-		label                 string
-		kidNames, newParts    tPartsList
+		child, node *tTrieNode
+		dec         int
 	)
-	stack := []tStackEntry{
-		// Push the current node to the stack
-		{parts: tPartsList{}, node: cn},
-	}
+	stack := make([]*tTrieNode, 0, 1024) // Pre-allocated buffer
+	// Push the current node to the stack
+	stack = append(stack, cn)
 
 	for 0 < len(stack) {
 		// Check for timeout or cancellation
 		if nil != aCtx.Err() {
 			return
 		}
-
 		// Pop the top of the stack
-		entry = stack[len(stack)-1]
+		node = stack[0]
 		// Remove the top of the stack
-		stack = stack[:len(stack)-1]
+		stack = stack[1:]
 
-		cLen = len(entry.node.tChildren)
-		ipLen = len(entry.node.tCachedIP.tIpList)
-		if (0 < cLen) || (0 < ipLen) {
-			// valid node with either children or IPs
-			rNodes++
-		}
-		if 0 < ipLen {
-			// with IPs it's a complete pattern
+		rNodes++
+		if 0 < len(node.tCachedIP.tIpList) {
+			// With IPs it's a complete pattern
 			rPatterns++
 		}
-		if 0 == cLen {
+		if 0 == len(node.tChildren) {
 			if (0 < rNodes) && (0 == dec) {
 				// Un-count the node without children
 				rNodes--
@@ -259,32 +244,21 @@ func (cn *tTrieNode) count(aCtx context.Context) (rNodes, rPatterns int) {
 			continue
 		}
 
-		// Collect and sort children keys for deterministic order
-		kidNames = make(tPartsList, 0, cLen)
-		for label = range entry.node.tChildren {
-			kidNames = append(kidNames, label)
+		for _, child = range node.tChildren {
+			stack = append(stack, child)
 		}
-		if 1 < len(kidNames) {
-			sort.Strings(kidNames)
-		}
-
-		// Push children to stack in reverse-sorted order
-		// (to process them in forward order when popped)
-		for idx = len(kidNames) - 1; 0 <= idx; idx-- {
-			label = kidNames[idx]
-
-			newParts = make(tPartsList, len(entry.parts)+1)
-			copy(newParts, entry.parts)
-			newParts[len(entry.parts)] = label
-
-			stack = append(stack, tStackEntry{
-				parts: newParts,
-				node:  entry.node.tChildren[label],
-			})
-		}
-	} // for stack
+	}
 
 	return
+	/*
+			This implementation is about 100% faster than the previous one
+			and uses about 85% less allocations:
+
+		cpu: AMD Ryzen 9 5950X 16-Core Processor
+		Benchmark_tTrieNode_count1-32    	      33	  31715331 ns/op	12147507 B/op	  226558 allocs/op
+		Benchmark_tTrieNode_count2-32    	      66	  17834899 ns/op	 6904182 B/op	      20 allocs/op
+		PASS
+	*/
 } // count()
 
 // `Create()` inserts a pattern to the node's Trie.

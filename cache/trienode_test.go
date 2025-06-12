@@ -1380,4 +1380,54 @@ func Test_tCacheNode_Update(t *testing.T) {
 	}
 } // Test_tCacheNode_Update()
 
+/*
+func randomFQDN(aSize int) []tPartsList {
+	fqdns := make([]tPartsList, aSize)
+	for i := 0; i < aSize; i++ {
+		hostname := "host" + strconv.Itoa(rand.Intn(10000)) +
+			".sub" + strconv.Itoa(rand.Intn(1000)) +
+			".domain" + strconv.Itoa(rand.Intn(100)) +
+			".tld"
+		fqdns[i] = pattern2parts(hostname)
+	}
+	return fqdns
+} // randomFQDN()
+
+func Benchmark_tTrieNode_count1(b *testing.B) {
+	node := newTrieNode()
+	fqdns := randomFQDN(100_000) // 100k FQDNs for a realistic test
+
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+
+	for i, parts := range fqdns {
+		i = i & 0xff
+		node.Create(ctx, parts, tIpList{net.ParseIP(fmt.Sprintf("%d.%d.%d.%d", i, i+1, i+2, i+3))}, 0)
+	}
+
+	b.ResetTimer()
+	for range b.N {
+		_, _ = node.count1(ctx)
+	}
+} // Benchmark_tTrieNode_count1()
+
+func Benchmark_tTrieNode_count2(b *testing.B) {
+	node := newTrieNode()
+	fqdns := randomFQDN(100_000) // 100k FQDNs for a realistic test
+
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+
+	for i, parts := range fqdns {
+		i = i & 0xff
+		node.Create(ctx, parts, tIpList{net.ParseIP(fmt.Sprintf("%d.%d.%d.%d", i, i+1, i+2, i+3))}, 0)
+	}
+
+	b.ResetTimer()
+	for range b.N {
+		_, _ = node.count2(ctx)
+	}
+} // Benchmark_tTrieNode_count1()
+*/
+
 /* _EoF_ */
