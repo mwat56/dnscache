@@ -7,6 +7,7 @@ Copyright © 2025  M.Watermann, 10247 Berlin, Germany
 package dnscache
 
 import (
+	"bytes"
 	"context"
 	"net"
 	"slices"
@@ -474,6 +475,11 @@ func Test_TResolver_lookup(t *testing.T) {
 				return
 			}
 
+			// Sort for consistency
+			slices.SortFunc(gotIPs, func(ip1, ip2 net.IP) int {
+				return bytes.Compare(ip1, ip2)
+			})
+
 			if !slices.EqualFunc(gotIPs, tc.wantIPs,
 				func(ip1, ip2 net.IP) bool {
 					return ip1.Equal(ip2)
@@ -567,5 +573,44 @@ func assertIps(t *testing.T, actuals []net.IP, expected []string) {
 		}
 	}
 } // assertIps()
+
+func Test_validateDNSServers(t *testing.T) {
+	tests := []struct {
+		name     string
+		servers  []string
+		expected []string
+	}{
+		{
+			name:     "empty list",
+			servers:  []string{},
+			expected: nil,
+		},
+		{
+			name:     "valid IPs",
+			servers:  []string{"8.8.8.8", "1.1.1.1"},
+			expected: []string{"8.8.8.8", "1.1.1.1"},
+		},
+		{
+			name:     "mixed valid and invalid",
+			servers:  []string{"8.8.8.8", "invalid", "1.1.1.1"},
+			expected: []string{"8.8.8.8", "1.1.1.1"},
+		},
+		{
+			name:     "all invalid",
+			servers:  []string{"invalid1", "invalid2"},
+			expected: []string{},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := validateDNSServers(tc.servers)
+			if !slices.Equal(got, tc.expected) {
+				t.Errorf("validateDNSServers() = %v, want %v",
+					got, tc.expected)
+			}
+		})
+	}
+} // Test_validateDNSServers()
 
 /* _EoF_ */

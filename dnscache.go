@@ -7,7 +7,6 @@ Copyright © 2025  M.Watermann, 10247 Berlin, Germany
 package dnscache
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"log"
@@ -15,7 +14,6 @@ import (
 	"net"
 	"os"
 	"runtime"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -27,14 +25,22 @@ import (
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
 const (
-	// `defExpireInterval` is the default interval at which expired cache entries are removed from the cache.
+	//
+	// `defExpireInterval` is the default interval at which expired
+	// cache entries are removed from the cache.
 	defExpireInterval = uint8(1 << 4) // 16 minutes
 
+	//
 	// `defRetries` is the default number of retries for DNS lookups.
 	defRetries = 3
+
+	//
+	// `defLookupTimeout` is the default timeout for DNS lookups.
+	defLookupTimeout = time.Minute << 1
 )
 
 type (
+	//
 	// `TResolverOptions` contain configuration options for creating a resolver.
 	//
 	// This are the public fields to configure a new `TResolver` instance:
@@ -62,6 +68,7 @@ type (
 		TTL             uint8
 	}
 
+	//
 	// `TResolver` is a DNS resolver with an optional background refresh.
 	//
 	// It embeds a map of DNS cache entries to store the DNS cache entries
@@ -80,6 +87,31 @@ type (
 )
 
 // ---------------------------------------------------------------------------
+// Helper functions:
+
+// `validateDNSServers()` validates the given list of DNS server IPs.
+//
+// Parameters:
+//   - `aServerList`: List of DNS server IPs to validate.
+//
+// Returns:
+//   - `[]string`: List of valid DNS server IPs.
+func validateDNSServers(aServerList []string) []string {
+	if 0 == len(aServerList) {
+		return nil
+	}
+
+	validIPs := make([]string, 0, len(aServerList))
+	for _, server := range aServerList {
+		if nil != net.ParseIP(server) {
+			validIPs = append(validIPs, server)
+		}
+	}
+
+	return validIPs
+} // validateDNSServers()
+
+// ---------------------------------------------------------------------------
 // Constructor functions:
 
 // `New()` returns a new DNS resolver with an optional background refresh.
@@ -91,7 +123,7 @@ type (
 //   - `aRefreshInterval`: Optional interval in minutes to refresh the cache.
 //
 // Returns:
-//   - `*Resolver`: A new `Resolver` instance.
+//   - `*TResolver`: A new `TResolver` instance.
 func New(aRefreshInterval uint8) *TResolver {
 	return NewWithOptions(TResolverOptions{
 		RefreshInterval: aRefreshInterval,
@@ -104,36 +136,14 @@ func New(aRefreshInterval uint8) *TResolver {
 //   - `aOptions`: Options for the resolver.
 //
 // Returns:
-//   - `*Resolver`: A new `Resolver` instance.
+//   - `*TResolver`: A new `TResolver` instance.
 func NewWithOptions(aOptions TResolverOptions) *TResolver {
-	optServers := aOptions.DNSservers
+	optServers := validateDNSServers(aOptions.DNSservers)
 	if 0 == len(optServers) {
 		// Use system default DNS servers
 		var err error
-		if optServers, err = getDNSServers(); (nil != err) ||
-			(0 == len(optServers)) {
+		if optServers, err = getDNSServers(); (nil != err) || (0 == len(optServers)) {
 			optServers = nil
-		}
-	} else {
-		// Check whether the provided DNS servers are valid,
-		// and remove invalid entries from the list
-		c := slices.Clone(optServers)
-		for i, server := range c {
-			if nil == net.ParseIP(server) {
-				// Remove invalid server from list
-				optServers = slices.Delete(optServers, i, i+1)
-			}
-		}
-		c = nil // free memory
-
-		if 0 == len(optServers) {
-			// Use system default DNS servers because
-			// the provided list was invalid
-			var err error
-			if optServers, err = getDNSServers(); (nil != err) ||
-				(0 == len(optServers)) {
-				optServers = nil
-			}
 		}
 	}
 
@@ -210,7 +220,7 @@ func NewWithOptions(aOptions TResolverOptions) *TResolver {
 } // NewWithOptions()
 
 // ---------------------------------------------------------------------------
-// `Resolver` methods:
+// `TResolver` methods:
 
 // `autoRefresh()` refreshes the cache at a given interval.
 //
@@ -251,7 +261,7 @@ func (r *TResolver) Fetch(aHostname string) ([]net.IP, error) {
 	}
 
 	// Use a context with timeout for the entire lookup operation
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute<<1)
+	ctx, cancel := context.WithTimeout(context.Background(), defLookupTimeout)
 	defer cancel()
 
 	// Check the local cache
@@ -267,7 +277,7 @@ func (r *TResolver) Fetch(aHostname string) ([]net.IP, error) {
 	}
 	incMetricsFields(&gMetrics.Misses)
 
-	return r.LookupWithTimeout(ctx, aHostname)
+	return r.LookupHost(ctx, aHostname)
 } // Fetch()
 
 // `FetchFirst()` returns the first IP address for a given hostname.
@@ -395,7 +405,6 @@ func (r *TResolver) lookup(aCtx context.Context, aHostname string) ([]net.IP, er
 	if nil != r.dnsServers {
 		// Resolve the hostname with multiple DNS servers in parallel
 		results := make(chan []net.IP, len(r.dnsServers))
-		// defer close(results)
 
 		// Create child context with cancellation control
 		ctx, cancel := context.WithCancel(aCtx)
@@ -409,10 +418,16 @@ func (r *TResolver) lookup(aCtx context.Context, aHostname string) ([]net.IP, er
 
 				if ips, err := lookupDNS(ctx, aServer, aHostname); nil == err {
 					if 0 < len(ips) {
+						select {
+						case results <- ips:
+							// Successfully sent result
+						case <-ctx.Done():
+							// Context is already canceled, discard result
+							return
+						}
 						// We have a valid result, hence
 						// cancel all other lookups
 						cancel()
-						results <- ips // lookup succeeded
 					}
 				}
 			}(server, aHostname)
@@ -420,24 +435,16 @@ func (r *TResolver) lookup(aCtx context.Context, aHostname string) ([]net.IP, er
 		wg.Wait()
 		close(results)
 		if ips, ok := <-results; ok {
-			// sort for consistency
-			slices.SortFunc(ips, func(ip1, ip2 net.IP) int {
-				return bytes.Compare(ip1, ip2)
-			})
 			return ips, nil
 		}
 	}
-	// Reaching this point of execution means that we have no
-	// DNS servers configured, or that all of them failed.
 
+	// Reaching this point of execution means that we have no DNS
+	// servers configured, or that all of them failed. Hence we
+	// fallback to the default resolver.
 	ips, err := r.resolver.LookupIP(aCtx, "ip", aHostname)
 	if nil == err {
-		// sort for consistency
-		slices.SortFunc(ips, func(ip1, ip2 net.IP) int {
-			return bytes.Compare(ip1, ip2)
-		})
-
-		return ips, nil // lookup succeeded
+		return ips, nil
 	}
 
 	// Check if it's a "not found" DNS error
@@ -450,7 +457,9 @@ func (r *TResolver) lookup(aCtx context.Context, aHostname string) ([]net.IP, er
 	return ips, err
 } // lookup()
 
-// `LookupWithTimeout()` resolves a hostname with the given context and
+
+
+// `LookupHost()` resolves a hostname with the given context and
 // caches the result.
 //
 // This method is called by `Fetch()` and `Refresh()` internally and not
@@ -464,7 +473,7 @@ func (r *TResolver) lookup(aCtx context.Context, aHostname string) ([]net.IP, er
 // Returns:
 //   - `[]net.IP`: List of IP addresses for the given hostname.
 //   - `error`: `nil` if the hostname was resolved successfully, the error otherwise.
-func (r *TResolver) LookupWithTimeout(aCtx context.Context, aHostname string) ([]net.IP, error) {
+func (r *TResolver) LookupHost(aCtx context.Context, aHostname string) ([]net.IP, error) {
 	var (
 		err error
 		ips []net.IP
@@ -517,7 +526,7 @@ func (r *TResolver) LookupWithTimeout(aCtx context.Context, aHostname string) ([
 	r.Unlock()
 
 	return ips, nil
-} // LookupWithTimeout()
+} // LookupHost()
 
 // `Metrics()` returns the current metrics data.
 //
@@ -554,7 +563,7 @@ func (r *TResolver) Refresh() {
 			return // Context timeout or cancellation
 		case <-limiter.C:
 			// Lookup the hostname:
-			_, err := r.LookupWithTimeout(ctx, hostname)
+			_, err := r.LookupHost(ctx, hostname)
 			if nil != err {
 				if errors.As(err, &dnsErr) {
 					if dnsErr.IsNotFound {
