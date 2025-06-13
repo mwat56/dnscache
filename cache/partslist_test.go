@@ -260,19 +260,18 @@ func Test_tPartsList_String(t *testing.T) {
 		{
 			name: "04 - two elements",
 			pl:   tPartsList{"tld", "domain"},
-			want: "tld.domain",
+			want: "domain.tld",
 		},
 		{
 			name: "05 - three elements",
 			pl:   tPartsList{"tld", "domain", "sub"},
-			want: "tld.domain.sub",
+			want: "sub.domain.tld",
 		},
 		{
 			name: "06 - four elements",
 			pl:   tPartsList{"tld", "domain", "sub", "host"},
-			want: "tld.domain.sub.host",
+			want: "host.sub.domain.tld",
 		},
-
 		// TODO: Add test cases.
 	}
 

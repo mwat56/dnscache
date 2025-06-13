@@ -44,8 +44,7 @@ func pattern2parts(aPattern string) tPartsList {
 	return parts
 } // pattern2parts()
 
-// `sortHostnames()` sorts a list of FQDNs by their reversed parts
-// (i.e. TLD first).
+// `sortHostnames()` sorts a list of FQDNs by their reversed parts lists.
 //
 // Parameters:
 //   - `aHostsList`: The list of FQDNs to sort.
@@ -100,8 +99,8 @@ func (pl tPartsList) Len() int {
 // `String()` implements the `fmt.Stringer` interface for a string
 // representation of the parts list.
 //
-// The list is returned in the reversed order, i.e. the TLD is the first
-// element.
+// The method returns the parts list in reversed order effectively
+// forming the original hostname.
 //
 // Returns:
 //   - `string`: String representation of the parts list.
@@ -112,7 +111,11 @@ func (pl tPartsList) String() string {
 	case 1:
 		return pl[0]
 	default:
-		return strings.Join(pl, ".")
+		clone := append(pl[:0:0], pl...)
+		for i, j := 0, len(clone)-1; i < j; i, j = i+1, j-1 {
+			clone[i], clone[j] = clone[j], clone[i]
+		}
+		return strings.Join(clone, ".")
 	}
 } // String()
 
