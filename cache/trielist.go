@@ -11,7 +11,6 @@ import (
 	"net"
 	"runtime"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 )
@@ -316,17 +315,17 @@ func (tl *tTrieList) Range(aCtx context.Context) <-chan string {
 			{node: tl.tRoot.node, path: []string{}},
 		}
 		var ( // avoid repeated allocations during loop
-			cLen, idx                    int
-			entry                        tStackEntry
-			kidNames, newParts, reversed tPartsList
-			label                        string
+			cLen, idx          int
+			entry              tStackEntry
+			kidNames, newParts tPartsList
+			label              string
 		)
 
 		for 0 < len(stack) {
 			// Check for timeout or cancellation
 			if nil != aCtx.Err() {
 				// Leaving the goroutine will close the
-				// channel (due to `defer`).
+				// channel (due to `defer close(ch)`).
 				return
 			}
 
@@ -335,13 +334,17 @@ func (tl *tTrieList) Range(aCtx context.Context) <-chan string {
 
 			// Emit FQDN if terminal (i.e. has IP addresses)
 			if 0 < len(entry.node.tCachedIP.tIpList) {
-				// Reverse the path to get the complete
-				// FQDN in original order.
-				reversed = make(tPartsList, len(entry.path))
-				for idx, label = range entry.path {
-					reversed[len(entry.path)-1-idx] = label
+				// Send FQDN through channel
+				select {
+				case ch <- entry.path.String():
+					// Successfully sent FQDN
+					runtime.Gosched()
+				case <-aCtx.Done():
+					// Context is already canceled, discard FQDN.
+					// Leaving the goroutine will close the
+					// channel (due to `defer close(ch)`).
+					return
 				}
-				ch <- strings.Join(reversed, ".")
 			}
 
 			if cLen = len(entry.node.tChildren); 0 == cLen {

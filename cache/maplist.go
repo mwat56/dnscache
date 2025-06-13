@@ -312,14 +312,18 @@ func (cl *tMapList) Range(aCtx context.Context) <-chan string {
 	go func(aHostList []string) {
 		defer close(ch)
 
-		// Send sorted hostnames through channel
+		// Send hostnames through channel
 		for _, fqdn := range aHostList {
-			if nil != aCtx.Err() {
+			select {
+			case ch <- fqdn:
+				// Successfully sent FQDN
+				runtime.Gosched()
+			case <-aCtx.Done():
+				// Context is already canceled, discard FQDN.
 				// Leaving the goroutine will close the
-				// channel (due to `defer`).
+				// channel (due to `defer close(ch)`).
 				return
 			}
-			ch <- fqdn
 		}
 	}(hostnames)
 
