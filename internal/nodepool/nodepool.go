@@ -46,7 +46,8 @@ type (
 	// The pool is inherently thread-safe. Its size is fixed and can't
 	// be changed after creation.
 	//
-	// The pool's `New()` method is called to create new nodes.
+	// The optional `New()` method is called to create new nodes, if the pool
+	// runs out of cached nodes.
 	//
 	TPool struct {
 		New      func() any        // Factory function for nodes
@@ -66,8 +67,8 @@ type (
 )
 
 var (
-	// `ErrNilFactory` is returned if the factory function is nil.
-	ErrNilFactory = TPoolError{errors.New("nil factory function `New()` in Pool")}
+	// // `ErrNilFactory` is returned if the factory function is nil.
+	// ErrNilFactory = TPoolError{errors.New("nil factory function `New()` in Pool")}
 
 	// `ErrPoolNotInit` is returned if the pool is not fully initialised.
 	ErrPoolNotInit = TPoolError{errors.New("node pool not initialised")}
@@ -76,15 +77,18 @@ var (
 // ---------------------------------------------------------------------------
 // Pool initialisation:
 
-// `Init()` initialises the pool.
+// `Init()` initialises a new node pool.
 //
 // Note: This function should be called before any other pool-related actions
 // to ensure proper initialisation.
 //
 // The created pool is inherently thread-safe.
 //
-// The required `aNewFunc` function is called to create new nodes if the
-// pool runs out of cached nodes.
+// The optional `aNewFunc` function is called to create new nodes if the pool
+// runs out of cached nodes. If that function is not provided (i.e. `nil`),
+// the pool will not create any new nodes and will return `nil` instead; in
+// that case the only way to get nodes into the pool is to use the `Put()`
+// method.
 //
 // The pool's size is fixed and can't be changed after initialisation.
 //
@@ -92,15 +96,14 @@ var (
 //   - `aNewFunc`: Factory function for creating new nodes.
 //   - `aSize`: Initial size of the pool.
 func Init(aNewFunc func() any, aSize int) (rPool *TPool, rErr error) {
-	if nil == aNewFunc {
-		rErr = ErrNilFactory
-		return
-	}
 	if 0 >= aSize {
 		aSize = poolInitSize
 	}
 
-	rPool = &TPool{New: aNewFunc}
+	rPool = &TPool{}
+	if nil != aNewFunc {
+		rPool.New = aNewFunc
+	}
 	rPool.reset(aSize)
 
 	return
@@ -120,10 +123,6 @@ func Init(aNewFunc func() any, aSize int) (rPool *TPool, rErr error) {
 func (p *TPool) CreatedChannel() (rChan <-chan uint32, rErr error) {
 	if nil == p {
 		rErr = ErrPoolNotInit
-		return
-	}
-	if nil == p.New {
-		rErr = ErrNilFactory
 		return
 	}
 	if nil == p.cCh {
@@ -150,10 +149,6 @@ func (p *TPool) CreatedChannel() (rChan <-chan uint32, rErr error) {
 func (p *TPool) Get() (rNode any, rErr error) {
 	if nil == p {
 		rErr = ErrPoolNotInit
-		return
-	}
-	if nil == p.New {
-		rErr = ErrNilFactory
 		return
 	}
 	if nil == p.nodes {
@@ -190,10 +185,6 @@ func (p *TPool) Metrics() (rMetric *TPoolMetrics, rErr error) {
 		rErr = ErrPoolNotInit
 		return
 	}
-	if nil == p.New {
-		rErr = ErrNilFactory
-		return
-	}
 	if nil == p.nodes {
 		p.reset(0)
 	}
@@ -214,6 +205,11 @@ func (p *TPool) Metrics() (rMetric *TPoolMetrics, rErr error) {
 // Returns:
 //   - `rNode`: A new node.
 func (p *TPool) newNode() (rNode any) {
+	if nil == p.New {
+		// Factory function not set: just return the default value
+		return
+	}
+
 	rNode = p.New()
 	//TODO: Go 1.24:
 	// runtime.AddCleanup(rNode, func() {
@@ -243,10 +239,6 @@ func (p *TPool) newNode() (rNode any) {
 func (p *TPool) Put(aNode any) (rErr error) {
 	if nil == p {
 		rErr = ErrPoolNotInit
-		return
-	}
-	if nil == p.New {
-		rErr = ErrNilFactory
 		return
 	}
 	if nil == p.nodes {
@@ -302,8 +294,10 @@ func (p *TPool) reset(aSize int) {
 	p.mCh = make(chan TPoolMetrics, 1) // pool metrics
 
 	// Pre-allocate some nodes for the pool:
-	for range aSize {
-		p.Put(p.New())
+	if nil != p.New {
+		for range aSize {
+			p.Put(p.New())
+		}
 	}
 } // reset()
 
@@ -318,10 +312,6 @@ func (p *TPool) reset(aSize int) {
 func (p *TPool) ReturnedChannel() (rChan <-chan uint32, rErr error) {
 	if nil == p {
 		rErr = ErrPoolNotInit
-		return
-	}
-	if nil == p.New {
-		rErr = ErrNilFactory
 		return
 	}
 	if nil == p.rCh {
@@ -377,10 +367,6 @@ func sendMetrics(aPool *TPool, aCreate, aReturn uint32) {
 func (p *TPool) SizeChannel() (rChan <-chan int, rErr error) {
 	if nil == p {
 		rErr = ErrPoolNotInit
-		return
-	}
-	if nil == p.New {
-		rErr = ErrNilFactory
 		return
 	}
 	if nil == p.sCh {

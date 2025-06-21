@@ -93,43 +93,34 @@ func Test_Get(t *testing.T) {
 	}{
 		/* */
 		{
-			name:    "01 - empty initialised pool",
-			pool:    np,
-			prepare: clear,
-			want:    "nil",
-			wantErr: false,
-		},
-		{
-			name: "02 - get from non-empty initialised pool",
-			pool: np,
-			prepare: func() {
-				clear()
-				np.Put("node 02")
-			},
-			want:    "node 02",
-			wantErr: false,
-		},
-		{
-			name:    "03 - get from non-initialised pool",
-			pool:    &TPool{},
-			prepare: nil,
-			want:    "",
-			wantErr: true,
-		},
-		{
-			name:    "04 - get from nil pool",
+			name:    "01 - get from nil pool",
 			pool:    nil,
 			prepare: nil,
 			want:    "",
 			wantErr: true,
 		},
 		{
-			name: "05 - get from pool with nil factory",
-			pool: &TPool{
-				New: func() any { return "nil factory" },
-			},
+			name:    "02 - get from non-initialised pool",
+			pool:    &TPool{},
 			prepare: nil,
-			want:    "nil factory",
+			want:    "",
+			wantErr: false,
+		},
+		{
+			name:    "03 - empty initialised pool",
+			pool:    np,
+			prepare: clear,
+			want:    "nil",
+			wantErr: false,
+		},
+		{
+			name: "04 - get from empty initialised pool",
+			pool: np,
+			prepare: func() {
+				clear()
+				np.Put("node 04")
+			},
+			want:    "node 04",
 			wantErr: false,
 		},
 		/* */
@@ -274,10 +265,13 @@ func Test_Metrics(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "07 - queuing metrics from non-initialised pool",
-			pool:    np2,
-			want:    nil,
-			wantErr: true,
+			name: "07 - queuing metrics from non-initialised pool",
+			pool: np2,
+			want: &TPoolMetrics{Created: 0,
+				Returned: 0,
+				Size:     0,
+			},
+			wantErr: false,
 		},
 		{
 			name: "08 - creating and returning multiple nodes in empty pool",
@@ -297,8 +291,13 @@ func Test_Metrics(t *testing.T) {
 			if nil != tc.prepare {
 				tc.prepare()
 			}
-			got, _ := tc.pool.Metrics()
+			got, gotErr := tc.pool.Metrics()
 
+			if (nil != gotErr) != tc.wantErr {
+				t.Errorf("Metrics() error = '%v', wantErr '%v'",
+					gotErr, tc.wantErr)
+				return
+			}
 			if nil == got {
 				if nil != tc.want {
 					t.Error("Metrics() = nil, want non-nil")
@@ -355,9 +354,14 @@ func Test_Put(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "02 - put node uninitialised pool",
-			pool:    &TPool{},
-			wantErr: true,
+			name: "02 - put node uninitialised pool",
+			pool: &TPool{},
+			wantMetrics: &TPoolMetrics{
+				Created:  0,
+				Returned: 1,
+				Size:     1,
+			},
+			wantErr: false,
 		},
 		{
 			name: "03 - put node in empty pool",
@@ -538,7 +542,7 @@ func Test_SizeChannel(t *testing.T) {
 		{
 			name:    "02 - get size channel from uninitialised pool",
 			pool:    &TPool{},
-			wantErr: true,
+			wantErr: false,
 		},
 		{
 			name:    "03 - get size channel from empty pool",
