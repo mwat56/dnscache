@@ -229,64 +229,43 @@ func (n *tNode) count(aCtx context.Context) (rNodes, rPatterns int) {
 	if nil == n {
 		return
 	}
-	type (
-		tStackEntry struct {
-			node *tNode     // respective node to process
-			path tPartsList // path in the trie to the node
-		}
-	)
+
 	var (
-		cLen     int
-		kidNames tPartsList
+		child, node *tNode
+		dec         int
 	)
-	stack := []tStackEntry{
-		// Push the current node to the stack
-		{node: n, path: tPartsList{}},
-	}
+	stack := make([]*tNode, 0, 1024) // Pre-allocated buffer
+	// Push the current node to the stack
+	stack = append(stack, n)
 
 	for 0 < len(stack) {
 		// Check for timeout or cancellation
 		if nil != aCtx.Err() {
 			return
 		}
-
 		// Pop the top of the stack
-		current := stack[len(stack)-1]
+		node = stack[0]
 		// Remove the top of the stack
-		stack = stack[:len(stack)-1]
-		rNodes++
+		stack = stack[1:]
 
-		// Check if current node is a terminal pattern
-		if 0 != current.node.terminator { // either end or wildcard bits
+		rNodes++
+		if 0 != node.terminator {
+			// With either end or wildcard bits it's a complete pattern
 			rPatterns++
 		}
-
-		if cLen = len(current.node.tChildren); 0 == cLen {
+		if 0 == len(node.tChildren) {
+			if (0 < rNodes) && (0 == dec) {
+				// Un-count the node without children
+				rNodes--
+				dec++
+			}
 			continue
 		}
 
-		// Collect and sort children keys for deterministic order
-		kidNames = make(tPartsList, 0, cLen)
-		for label := range current.node.tChildren {
-			kidNames = append(kidNames, label)
+		for _, child = range node.tChildren {
+			stack = append(stack, child)
 		}
-		if 1 < len(kidNames) {
-			sort.Strings(kidNames)
-		}
-
-		// Push children to stack in reverse-sorted order
-		// (to process them in forward order when popped)
-		for idx := len(kidNames) - 1; 0 <= idx; idx-- {
-			label := kidNames[idx]
-			newPath := make(tPartsList, len(current.path)+1)
-			copy(newPath, current.path)
-			newPath[len(current.path)] = label
-			stack = append(stack, tStackEntry{
-				node: current.node.tChildren[label],
-				path: newPath,
-			})
-		}
-	} // for stack
+	}
 
 	return
 } // count()
@@ -409,6 +388,85 @@ func (n *tNode) Equal(aNode *tNode) (rOK bool) {
 	return
 } // Equal()
 
+// `finalNode()` returns the node that matches the final part of ´aPartsList`.
+//
+// Parameters:
+//   - `aCtx`: The timeout context to use for the operation.
+//   - `aPartsList`: The list of parts of the pattern to check.
+//
+// Returns:
+//   - `rNode`: The node that matches the pattern, `nil` otherwise.
+//   - `rOK`: `true` if the pattern is in the node's Trie, `false` otherwise.
+func (n *tNode) finalNode(aCtx context.Context, aPartsList tPartsList) (rNode *tNode, rOK bool) {
+	if (nil == n) || (0 == len(aPartsList)) {
+		return
+	}
+
+	var ( // avoid repeated allocations inside the loop
+		child *tNode
+		depth int
+		label string
+		ok    bool
+	)
+
+	current := n
+	for depth, label = range aPartsList {
+		// Check for timeout or cancellation
+		if nil != aCtx.Err() {
+			return
+		}
+
+		// Check for a child with the next label
+		if child, ok = current.tChildren[label]; !ok {
+			// No child with that name, so check for a wildcard
+			// match at the current level
+			if child, ok = current.tChildren["*"]; ok {
+				if rOK = (0 != child.terminator); rOK {
+					rNode = child
+				}
+			}
+
+			return
+		}
+
+		// Descend into the child node
+		current = child
+		if depth < len(aPartsList)-1 {
+			if child, ok = current.tChildren["*"]; !ok {
+				continue
+			}
+
+			// We're at an intermediate node with a
+			// wildcard child, so we have a match.
+			if rOK = ((child.terminator & wildMask) == wildMask); !rOK {
+				return
+			}
+			rNode = child
+
+			// Check whether there's also a literal match:
+			if child, ok = current.tChildren[aPartsList[depth+1]]; ok {
+				// Don't change `rOK` because we already have
+				// a valid (wildcard) match.
+				if ok = ((child.terminator & endMask) == endMask); ok {
+					rNode = child
+				}
+			}
+
+			return
+		} else if len(aPartsList)-1 == depth {
+			// We're at the last label of the pattern
+			// hence check for a terminal match:
+			if rOK = (0 != current.terminator); rOK {
+				rNode = current
+			}
+
+			return
+		}
+	}
+
+	return
+} // finalNode()
+
 // `forEach()` calls the given function for each node in the trie.
 //
 // The given `aFunc()` is called by the owning trie in a locked R/O context
@@ -485,54 +543,8 @@ func (n *tNode) match(aCtx context.Context, aPartsList tPartsList) (rOK bool) {
 	if (nil == n) || (0 == len(aPartsList)) {
 		return
 	}
-	if 0 == len(n.tChildren) {
-		// No children, thus no match
-		return
-	}
 
-	var ( // avoid repeated allocations inside the loop
-		child *tNode
-		depth int
-		label string
-		ok    bool
-	)
-
-	for depth, label = range aPartsList {
-		// Check for timeout or cancellation
-		if nil != aCtx.Err() {
-			return
-		}
-
-		// Check for a child with the current label
-		if child, ok = n.tChildren[label]; !ok {
-			// No child with that name, so check for a wildcard
-			// match at the current level
-			if child, ok = n.tChildren["*"]; ok {
-				rOK = (0 != child.terminator)
-			}
-
-			return
-		}
-
-		// Descend into the child node
-		n = child
-		if depth < len(aPartsList)-1 {
-			if child, ok = n.tChildren["*"]; ok {
-				rOK = (0 != child.terminator)
-
-				return
-			}
-		}
-
-		if len(aPartsList)-1 == depth {
-			// We're at the last label of the pattern,
-			// check for a terminal match
-			rOK = (0 != n.terminator)
-
-			return
-		}
-	}
-
+	_, rOK = n.finalNode(aCtx, aPartsList)
 	return
 } // match()
 

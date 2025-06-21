@@ -470,7 +470,7 @@ func Test_tNode_count(t *testing.T) {
 		{
 			name:         "02 - empty node",
 			node:         newNode(),
-			wantNodes:    1,
+			wantNodes:    0,
 			wantPatterns: 0,
 		},
 		{
@@ -503,7 +503,7 @@ func Test_tNode_count(t *testing.T) {
 				n.add(context.TODO(), tPartsList{"tld", "domain", "sub"})
 				return n
 			}(),
-			wantNodes:    4,
+			wantNodes:    3,
 			wantPatterns: 3,
 		},
 		{
@@ -572,7 +572,7 @@ func Test_tNode_count(t *testing.T) {
 				}
 				return
 			}
-			if gotPatterns >= gotNodes {
+			if gotPatterns > gotNodes {
 				t.Errorf("tNode.count() Patterns -ge Nodes: %d >= %d",
 					gotPatterns, gotNodes)
 			}
@@ -697,6 +697,208 @@ func Test_tNode_delete(t *testing.T) {
 		})
 	}
 } // Test_tNode_delete()
+
+func Test_tNode_finalNode(t *testing.T) {
+	tests := []struct {
+		name      string
+		node      *tNode
+		partsList tPartsList
+		wantNode  *tNode
+		wantOK    bool
+	}{
+		/* */
+		{
+			name:      "01 - nil node",
+			node:      nil,
+			partsList: tPartsList{"tld", "domain", "sub"},
+			wantNode:  nil,
+			wantOK:    false,
+		},
+		{
+			name:      "02 - nil parts list",
+			node:      newNode(),
+			partsList: nil,
+			wantNode:  nil,
+			wantOK:    false,
+		},
+		{
+			name:      "03 - empty parts list",
+			node:      newNode(),
+			partsList: tPartsList{},
+			wantNode:  nil,
+			wantOK:    false,
+		},
+		{
+			name:      "04 - non-existent path",
+			node:      newNode(),
+			partsList: tPartsList{"tld", "domain", "sub"},
+			wantNode:  nil,
+			wantOK:    false,
+		},
+		{
+			name: "05 - existing path",
+			node: func() *tNode {
+				n := newNode()
+				n.add(context.TODO(), tPartsList{"tld", "domain", "sub"})
+				return n
+			}(),
+			partsList: tPartsList{"tld", "domain", "sub"},
+			wantNode: func() *tNode {
+				n := &tNode{terminator: endMask}
+				return n
+			}(),
+			wantOK: true,
+		},
+		{
+			name: "06 - existing path with wildcard",
+			node: func() *tNode {
+				n := newNode()
+				n.add(context.TODO(), tPartsList{"tld", "domain", "*"})
+				return n
+			}(),
+			partsList: tPartsList{"tld", "domain", "sub"},
+			wantNode: func() *tNode {
+				n := &tNode{terminator: wildMask}
+				return n
+			}(),
+			wantOK: true,
+		},
+		{
+			name: "07 - existing path with wildcard and child",
+			node: func() *tNode {
+				n := newNode()
+				n.add(context.TODO(), tPartsList{"tld", "domain", "*"})
+				n.add(context.TODO(), tPartsList{"tld", "domain", "sub"})
+				return n
+			}(),
+			partsList: tPartsList{"tld", "domain", "sub"},
+			wantNode: func() *tNode {
+				n := &tNode{terminator: endMask}
+				return n
+			}(),
+			wantOK: true,
+		},
+		{
+			name: "08 - existing path with child and wildcard and grandchild",
+			node: func() *tNode {
+				n := newNode()
+				n.add(context.TODO(), tPartsList{"tld", "domain", "sub"})
+				n.add(context.TODO(), tPartsList{"tld", "domain", "*"})
+				n.add(context.TODO(), tPartsList{"tld", "domain", "sub", "grand"})
+				return n
+			}(),
+			partsList: tPartsList{"tld", "domain", "sub"},
+			wantNode: func() *tNode {
+				n := newNode()
+				n.terminator = endMask
+				n.add(context.TODO(), tPartsList{"grand"})
+				return n
+			}(),
+			wantOK: true,
+		},
+		{
+			name: "09 - existing path with child and wildcard and grandchild and greatgrandchild",
+			node: func() *tNode {
+				n := newNode()
+				n.add(context.TODO(), tPartsList{"tld", "domain", "sub"})
+				n.add(context.TODO(), tPartsList{"tld", "domain", "*"})
+				n.add(context.TODO(), tPartsList{"tld", "domain", "sub", "grand"})
+				n.add(context.TODO(), tPartsList{"tld", "domain", "sub", "grand", "greatgrand"})
+				return n
+			}(),
+			partsList: tPartsList{"tld", "domain", "sub"},
+			wantNode: func() *tNode {
+				n := newNode()
+				n.terminator = endMask
+				n.add(context.TODO(), tPartsList{"grand"})
+				n.add(context.TODO(), tPartsList{"grand", "greatgrand"})
+				return n
+			}(),
+			wantOK: true,
+		},
+		{
+			name: "10 - existing path with child and wildcard and grandchild and greatgrandchild and greatgreatgrandchild",
+			node: func() *tNode {
+				n := newNode()
+				n.add(context.TODO(), tPartsList{"tld", "domain", "sub"})
+				n.add(context.TODO(), tPartsList{"tld", "domain", "*"})
+				n.add(context.TODO(), tPartsList{"tld", "domain", "sub", "grand"})
+				n.add(context.TODO(), tPartsList{"tld", "domain", "sub", "grand", "greatgrand"})
+				n.add(context.TODO(), tPartsList{"tld", "domain", "sub", "grand", "greatgrand", "greatgreatgrand"})
+				return n
+			}(),
+			partsList: tPartsList{"tld", "domain", "sub"},
+			wantNode: func() *tNode {
+				n := newNode()
+				n.terminator = endMask
+				n.add(context.TODO(), tPartsList{"grand"})
+				n.add(context.TODO(), tPartsList{"grand", "greatgrand"})
+				n.add(context.TODO(), tPartsList{"grand", "greatgrand", "greatgreatgrand"})
+				return n
+			}(),
+			wantOK: true,
+		},
+		{
+			name: "11 - match FQDN against wildcards",
+			node: func() *tNode {
+				n := newNode()
+				n.add(context.TODO(), tPartsList{"tld", "domain", "*"})
+				n.add(context.TODO(), tPartsList{"tld", "domain", "host", "*"})
+				return n
+			}(),
+			partsList: tPartsList{"tld", "domain", "host"},
+			wantNode: func() *tNode {
+				n := newNode()
+				n.terminator = wildMask
+				return n
+			}(),
+			wantOK: true,
+		},
+		{
+			name: "12 - match FQDN against wildcard and FQDN and wildcards and FQDN and wildcard",
+			node: func() *tNode {
+				n := newNode()
+				n.add(context.TODO(), tPartsList{"tld", "domain", "*"})
+				n.add(context.TODO(), tPartsList{"tld", "domain", "host", "*"})
+				n.add(context.TODO(), tPartsList{"tld", "other", "sub", "host"})
+				n.add(context.TODO(), tPartsList{"tld", "other", "host", "*"})
+				return n
+			}(),
+			partsList: tPartsList{"tld", "other", "host"},
+			wantNode:  nil,
+			wantOK:    false,
+		},
+		/* */
+		// TODO: Add test cases.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			gotNode, gotOK := tc.node.finalNode(context.TODO(), tc.partsList)
+
+			if gotOK != tc.wantOK {
+				t.Errorf("tNode.finalNode() gotOK = '%v', want '%v'",
+					gotOK, tc.wantOK)
+				return
+			}
+			if nil == gotNode {
+				if nil != tc.wantNode {
+					t.Error("tNode.finalNode() gotNode = nil, want non-nil")
+				}
+				return
+			}
+			if nil == tc.wantNode {
+				t.Errorf("tNode.finalNode() gotNode =\n%q\nwant nil",
+					gotNode)
+				return
+			}
+			if !tc.wantNode.Equal(gotNode) {
+				t.Errorf("tNode.finalNode() gotNode =\n%q\nwant\n%q",
+					gotNode, tc.wantNode)
+			}
+		})
+	}
+} // Test_tNode_finalNode()
 
 func Test_tNode_forEach(t *testing.T) {
 	tests := []struct {
@@ -857,7 +1059,7 @@ func Test_tNode_match(t *testing.T) {
 			}(),
 			parts: tPartsList{"tld", "domain", "host"},
 			want:  true,
-		}, 
+		},
 		{
 			name: "11 - match FQDN against wildcard and FQDN and wildcards and FQDN",
 			node: func() *tNode {
