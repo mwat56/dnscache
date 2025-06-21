@@ -32,13 +32,13 @@ type (
 	//
 	// These are the fields providing the metrics data:
 	//
+	//   - `Size`: Current number of nodes in the pool.
 	//   - `Created`: Number of nodes created by the pool.
 	//   - `Returned`: Number of nodes returned to the pool.
-	//   - `Size`: Current number of nodes in the pool.
 	TPoolMetrics struct {
+		Size     int
 		Created  uint32
 		Returned uint32
-		Size     int
 	}
 
 	// `TPool` is a bounded pool of nodes.
@@ -50,14 +50,11 @@ type (
 	// runs out of cached nodes.
 	//
 	TPool struct {
-		New      func() any        // Factory function for nodes
-		nodes    chan any          // Bounded channel for nodes
-		cCh      chan uint32       // Channel for newly created nodes
-		rCh      chan uint32       // Channel for returned nodes
-		sCh      chan int          // Channel for pool size
-		mCh      chan TPoolMetrics // Channel for pool metrics
-		created  atomic.Uint32     // Number of nodes created
-		returned atomic.Uint32     // Number of nodes returned
+		New      func() any         // Factory function for nodes
+		nodes    chan any           // Bounded channel for nodes
+		mCh      chan *TPoolMetrics // Channel for pool metrics
+		created  atomic.Uint32      // Number of nodes created
+		returned atomic.Uint32      // Number of nodes returned
 	}
 
 	// `TPoolError` is returned if the pool is not fully initialised.
@@ -67,9 +64,6 @@ type (
 )
 
 var (
-	// // `ErrNilFactory` is returned if the factory function is nil.
-	// ErrNilFactory = TPoolError{errors.New("nil factory function `New()` in Pool")}
-
 	// `ErrPoolNotInit` is returned if the pool is not fully initialised.
 	ErrPoolNotInit = TPoolError{errors.New("node pool not initialised")}
 )
@@ -112,36 +106,15 @@ func Init(aNewFunc func() any, aSize int) (rPool *TPool, rErr error) {
 // ---------------------------------------------------------------------------
 // `TPool` methods:
 
-// `CreatedChannel()` returns a R/O channel that provides the current number
-// of nodes created by the pool.
-//
-// The channel can be used for real-time monitoring of the pool's work.
-//
-// Returns:
-//   - `rChan`: Channel that provides the number of nodes created.
-//   - `rErr`: An error, if any.
-func (p *TPool) CreatedChannel() (rChan <-chan uint32, rErr error) {
-	if nil == p {
-		rErr = ErrPoolNotInit
-		return
-	}
-	if nil == p.cCh {
-		// Pool not initialised yet
-		p.reset(0)
-	}
-	rChan = p.cCh
-
-	return
-} // CreatedChannel()
-
 // `Get()` picks a node from the pool.
 //
-// Calling this method is the "raw" version of getting a node from
-// the pool. An improved way would be to create a wrapper function that
-// calls this method and then assures that the returned node's fields
-// are properly initialised/reset before returning it to the caller.
+// Calling this method is the "raw" version of getting a node from the pool.
+// An improved way would be to create a wrapper function that calls this
+// method and then assures that the returned node's fields are properly
+// initialised/reset before passing it to the caller.
 //
-// If the pool is empty, a new node instance is created.
+// If the pool is empty, a new node instance is created if the pool's
+// `New()` function is set. Otherwise `nil` is returned.
 //
 // Returns:
 //   - `rNode`: A node from the pool.
@@ -155,31 +128,33 @@ func (p *TPool) Get() (rNode any, rErr error) {
 		// Pool not initialised yet
 		p.reset(0)
 	}
+	var created uint32
 
 	select {
 	case rNode = <-p.nodes:
 		// Node was taken from pool
 	default:
-		rNode = p.newNode()
+		rNode, created = p.newNode()
 	}
 
-	select {
-	case p.sCh <- len(p.nodes):
-		// New pool size was written
-	default:
-		// Ignore if nobody's listening
-	}
-	go sendMetrics(p, 0, 0)
+	go sendMetrics(p, created, 0)
 
 	return
 } // Get()
 
 // `Metrics()` returns the current pool metrics.
 //
-// Returns:
+// The returned metrics are a snapshot of the current state at the time of
+// calling this method. The metrics may change as soon as the method returns.
+//
+// The metrics are:
+//   - `Size`: Current number of nodes in the pool.
 //   - `Created`: Number of nodes created by the pool.
 //   - `Returned`: Number of nodes returned to the pool.
-//   - `Size`: Current number of nodes in the pool.
+//
+// Returns:
+//   - `rMetric`: Current pool metrics.
+//   - `rErr`: An error, if any.
 func (p *TPool) Metrics() (rMetric *TPoolMetrics, rErr error) {
 	if nil == p {
 		rErr = ErrPoolNotInit
@@ -197,6 +172,33 @@ func (p *TPool) Metrics() (rMetric *TPoolMetrics, rErr error) {
 	return
 } // Metrics()
 
+// `MetricsChannel()` returns a R/O channel that provides the current pool
+// metrics.
+//
+// The channel can be used for real-time monitoring of the pool's activity.
+//
+// The metrics are:
+//   - `Size`: Current number of nodes in the pool.
+//   - `Created`: Number of nodes created by the pool.
+//   - `Returned`: Number of nodes returned to the pool.
+//
+// Returns:
+//   - `rChan`: Channel that provides the pool metrics.
+//   - `rErr`: An error, if any.
+func (p *TPool) MetricsChannel() (rChan <-chan *TPoolMetrics, rErr error) {
+	if nil == p {
+		rErr = ErrPoolNotInit
+		return
+	}
+	if nil == p.mCh {
+		// Pool not initialised yet
+		p.reset(0)
+	}
+	rChan = p.mCh
+
+	return
+} // MetricsChannel()
+
 // `newNode()` creates a new node.
 //
 // This private method is called internally by the `Get()` method if the pool
@@ -204,7 +206,7 @@ func (p *TPool) Metrics() (rMetric *TPoolMetrics, rErr error) {
 //
 // Returns:
 //   - `rNode`: A new node.
-func (p *TPool) newNode() (rNode any) {
+func (p *TPool) newNode() (rNode any, rCreated uint32) {
 	if nil == p.New {
 		// Factory function not set: just return the default value
 		return
@@ -215,14 +217,7 @@ func (p *TPool) newNode() (rNode any) {
 	// runtime.AddCleanup(rNode, func() {
 	// 	p.put(rNode)
 	// })
-
-	c := p.created.Add(1)
-	select {
-	case p.cCh <- c:
-		// Counter was written
-	default:
-		// Ignore if nobody's listening
-	}
+	rCreated = p.created.Add(1)
 
 	return
 } // newNode()
@@ -247,12 +242,6 @@ func (p *TPool) Put(aNode any) (rErr error) {
 	}
 
 	r := p.returned.Add(1)
-	select {
-	case p.rCh <- r:
-		// Counter was written
-	default:
-		// Ignore if nobody's listening
-	}
 
 	if (r & poolDropMask) == poolDropMask {
 		// Drop the node if the drop mask matches.
@@ -266,13 +255,6 @@ func (p *TPool) Put(aNode any) (rErr error) {
 		// Node was returned to the pool
 	default:
 		// Drop if pool is full
-	}
-
-	select {
-	case p.sCh <- len(p.nodes):
-		// New pool size was written
-	default:
-		// Ignore if nobody's listening
 	}
 	go sendMetrics(p, 0, r)
 
@@ -288,10 +270,7 @@ func (p *TPool) reset(aSize int) {
 		aSize = poolInitSize
 	}
 	p.nodes = make(chan any, aSize<<2)
-	p.cCh = make(chan uint32, 1)       // new nodes created
-	p.rCh = make(chan uint32, 1)       // returned nodes
-	p.sCh = make(chan int, 1)          // pool size
-	p.mCh = make(chan TPoolMetrics, 1) // pool metrics
+	p.mCh = make(chan *TPoolMetrics, 1) // pool metrics
 
 	// Pre-allocate some nodes for the pool:
 	if nil != p.New {
@@ -301,36 +280,14 @@ func (p *TPool) reset(aSize int) {
 	}
 } // reset()
 
-// `ReturnedChannel()` returns a R/O channel that provides the current number
-// of nodes returned to the pool.
-//
-// The channel can be used for real-time monitoring of the pool's work.
-//
-// Returns:
-//   - `rChan`: Channel that provides the number of nodes returned.
-//   - `rErr`: An error, if any.
-func (p *TPool) ReturnedChannel() (rChan <-chan uint32, rErr error) {
-	if nil == p {
-		rErr = ErrPoolNotInit
-		return
-	}
-	if nil == p.rCh {
-		// Pool not initialised yet
-		p.reset(0)
-	}
-	rChan = p.rCh
-
-	return
-} // ReturnedChannel()
-
 // `sendMetrics()` sends the pool's metrics to the metrics channel.
 //
 // This function is called asynchronously by the `Get()` and `Put()` methods.
 //
 // Parameters:
 //   - `aPool`: The pool to send the metrics for.
-//   - `aCreate`: Number of nodes created (if 0, use pool's counter).
-//   - `aReturn`: Number of nodes returned (if 0, use pool's counter).
+//   - `aCreate`: Number of nodes created (if `0`, use pool's counter).
+//   - `aReturn`: Number of nodes returned (if `0`, use pool's counter).
 func sendMetrics(aPool *TPool, aCreate, aReturn uint32) {
 	if 0 == aCreate {
 		aCreate = aPool.created.Load()
@@ -338,7 +295,7 @@ func sendMetrics(aPool *TPool, aCreate, aReturn uint32) {
 	if 0 == aReturn {
 		aReturn = aPool.returned.Load()
 	}
-	m := TPoolMetrics{
+	m := &TPoolMetrics{
 		Created:  aCreate,
 		Returned: aReturn,
 		Size:     len(aPool.nodes),
@@ -355,27 +312,5 @@ func sendMetrics(aPool *TPool, aCreate, aReturn uint32) {
 		// Ignore if nobody's listening
 	}
 } // sendMetrics()
-
-// `SizeChannel()` returns a R/O channel that provides the current number
-// of nodes in the pool.
-//
-// The channel can be used for real-time monitoring of the pool's work.
-//
-// Returns:
-//   - `rChan`: Channel that provides the number of nodes in the pool.
-//   - `rErr`: An error, if any.
-func (p *TPool) SizeChannel() (rChan <-chan int, rErr error) {
-	if nil == p {
-		rErr = ErrPoolNotInit
-		return
-	}
-	if nil == p.sCh {
-		// Pool not initialised yet
-		p.reset(0)
-	}
-	rChan = p.sCh
-
-	return
-} // SizeChannel()
 
 /* _EoF_ */

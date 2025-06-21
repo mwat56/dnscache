@@ -13,65 +13,6 @@ import (
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
-func Test_CreatedChannel(t *testing.T) {
-	np, _ := Init(func() any { return "nil" }, 0)
-	tests := []struct {
-		name string
-		want bool
-	}{
-		/* */
-		{
-			name: "01 - get create channel",
-			want: true,
-		},
-		/* */
-		// TODO: Add test cases.
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			// Clear the pool and reset its counters:
-			for range len(np.nodes) {
-				_, _ = np.Get()
-			}
-			// Reset counters
-			np.created.Store(0)
-			np.returned.Store(0)
-
-			// Get the channel
-			createCh, _ := np.CreatedChannel()
-
-			// Verify channel is not nil
-			if (nil != createCh) != tc.want {
-				t.Errorf("getCreateChannel() returned %v, want non-nil channel",
-					createCh)
-				return
-			}
-
-			// Test that the channel works by creating a node
-			if tc.want {
-				// Create a node to trigger channel update
-				_, _ = np.Get()
-
-				// Try to read from channel with timeout
-				select {
-				case createCount := <-createCh:
-					// Create count should be at least 1 after creating a node
-					if 0 >= createCount {
-						t.Errorf("getCreateChannel() channel returned count %d, want > 0",
-							createCount)
-					}
-
-				case <-time.After(time.Millisecond << 8):
-					t.Error(
-						"getCreateChannel() channel didn't receive update within timeout",
-					)
-				}
-			}
-		})
-	}
-} // Test_CreatedChannel()
-
 func Test_Get(t *testing.T) {
 	np, _ := Init(func() any { return "nil" }, 0)
 	clear := func() {
@@ -327,6 +268,84 @@ func Test_Metrics(t *testing.T) {
 	}
 } // Test_Metrics()
 
+func Test_MetricsChannel(t *testing.T) {
+	tests := []struct {
+		name    string
+		pool    *TPool
+		wantErr bool
+	}{
+		/* */
+		{
+			name:    "01 - get metrics channel from nil pool",
+			pool:    nil,
+			wantErr: true,
+		},
+		{
+			name:    "02 - get metrics channel from uninitialised pool",
+			pool:    &TPool{},
+			wantErr: false,
+		},
+		{
+			name:    "03 - get metrics channel from empty pool",
+			pool:    &TPool{New: func() any { return "nil" }},
+			wantErr: false,
+		},
+		/* */
+		// TODO: Add test cases.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			metricsCh, gotErr := tc.pool.MetricsChannel()
+
+			if nil == metricsCh {
+				if !tc.wantErr {
+					t.Error("MetricsChannel() = `nil`, want non-nil")
+				}
+				return
+			}
+			if nil == tc.pool {
+				if nil != gotErr {
+					t.Errorf("MetricsChannel() error = '%v', want nil",
+						gotErr)
+					return
+				}
+			}
+			if (nil != gotErr) != tc.wantErr {
+				t.Errorf("MetricsChannel() error = '%v', wantErr '%v'",
+					gotErr, tc.wantErr)
+				return
+			}
+
+			// Test that the channel works by adding a node to the pool
+			if tc.wantErr {
+				// Create a node and put it back to trigger metrics update
+				node, _ := tc.pool.Get()
+				tc.pool.Put(node)
+
+				// Try to read from channel with timeout
+				select {
+				case metrics := <-metricsCh:
+					if nil == metrics {
+						t.Errorf("MetricsChannel() channel returned metric '%v', want non-nil",
+							metrics)
+						return
+					}
+					if 0 >= metrics.Size {
+						t.Errorf("MetricsChannel() channel returned size %d, want > 0",
+							metrics.Size)
+					}
+
+				case <-time.After(time.Millisecond << 8):
+					t.Error(
+						"MetricsChannel() channel didn't receive metrics update within timeout",
+					)
+				}
+			}
+		})
+	}
+} // Test_MetricsChannel()
+
 func Test_Put(t *testing.T) {
 	clear := func(aPool *TPool) {
 		// Clear the pool
@@ -466,146 +485,5 @@ func Test_Put(t *testing.T) {
 		})
 	}
 } // Test_Put()
-
-func Test_ReturnedChannel(t *testing.T) {
-	np, _ := Init(func() any { return "nil" }, 0)
-	tests := []struct {
-		name string
-		want bool
-	}{
-		/* */
-		{
-			name: "01 - get return channel",
-			want: true,
-		},
-		/* */
-		// TODO: Add test cases.
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			// Clear the pool and reset its counters:
-			for range len(np.nodes) {
-				_, _ = np.Get()
-			}
-			// Reset counters
-			np.created.Store(0)
-			np.returned.Store(0)
-
-			// Get the channel
-			returnCh, _ := np.ReturnedChannel()
-
-			// Verify channel is not nil
-			if (nil != returnCh) != tc.want {
-				t.Errorf("getReturnChannel() returned %v, want non-nil channel",
-					returnCh)
-				return
-			}
-
-			// Test that the channel works by returning a node to the pool
-			if tc.want {
-				// Create a node and put it back to trigger return update
-				node, _ := np.Get()
-				np.Put(node)
-
-				// Try to read from channel with timeout
-				select {
-				case returnCount := <-returnCh:
-					// Return count should be at least 1 after returning a node
-					if 0 >= returnCount {
-						t.Errorf("getReturnChannel() channel returned count %d, want > 0",
-							returnCount)
-					}
-
-				case <-time.After(time.Millisecond << 8):
-					t.Error(
-						"getReturnChannel() channel didn't receive update within timeout",
-					)
-				}
-			}
-		})
-	}
-} // Test_ReturnedChannel()
-
-func Test_SizeChannel(t *testing.T) {
-	tests := []struct {
-		name    string
-		pool    *TPool
-		wantErr bool
-	}{
-		/* */
-		{
-			name:    "01 - get size channel from nil pool",
-			pool:    nil,
-			wantErr: true,
-		},
-		{
-			name:    "02 - get size channel from uninitialised pool",
-			pool:    &TPool{},
-			wantErr: false,
-		},
-		{
-			name:    "03 - get size channel from empty pool",
-			pool:    &TPool{New: func() any { return "nil" }},
-			wantErr: false,
-		},
-		/* */
-		// TODO: Add test cases.
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			sizeCh, gotErr := tc.pool.SizeChannel()
-
-			if nil == sizeCh {
-				if !tc.wantErr {
-					t.Error("SizeChannel() = `nil`, want non-nil")
-				}
-				return
-			}
-			if nil == tc.pool {
-				if nil != gotErr {
-					t.Errorf("SizeChannel() error = '%v', want nil",
-						gotErr)
-					return
-				}
-			}
-			if (nil != gotErr) != tc.wantErr {
-				t.Errorf("SizeChannel() error = '%v', wantErr '%v'",
-					gotErr, tc.wantErr)
-				return
-			}
-
-			// // Verify channel is not nil
-			// if (nil != sizeCh) != tc.wantErr {
-			// 	t.Errorf("SizeChannel() returned %v, want non-nil channel",
-			// 		sizeCh)
-			// 	return
-			// }
-
-			// Test that the channel works by adding a node to the pool
-			if tc.wantErr {
-				// Create a node and put it back to trigger size update
-				node, _ := tc.pool.Get()
-				tc.pool.Put(node)
-
-				// Try to read from channel with timeout
-				select {
-				case size := <-sizeCh:
-					// Size should be at least 1 after adding a node
-					if 0 >= size {
-						t.Errorf("SizeChannel() channel returned size %d, want > 0",
-							size)
-					}
-
-				case <-time.After(time.Millisecond << 8):
-					t.Error(
-						"SizeChannel() channel didn't receive size update within timeout",
-					)
-				}
-			}
-		})
-	}
-} // Test_SizeChannel()
 
 /* _EoF_ */
