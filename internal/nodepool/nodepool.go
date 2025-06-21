@@ -240,6 +240,9 @@ func (p *TPool) Put(aNode any) (rErr error) {
 		// Pool not initialised yet
 		p.reset(0)
 	}
+	if nil == aNode {
+		return
+	}
 
 	r := p.returned.Add(1)
 	if (r & poolDropMask) == poolDropMask {

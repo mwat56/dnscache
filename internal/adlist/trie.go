@@ -493,16 +493,8 @@ func (t *tTrie) Metrics() *TMetrics {
 	if (nil == t) || (nil == t.root.node) {
 		return nil
 	}
-
-	// Get the pool metrics before we do anything else
-	pm := poolMetrics()
-
 	// Force a garbage collection cycle
 	runtime.GC()
-	runtime.Gosched()
-	// Read full memory stats
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
 
 	t.root.RLock()
 	nodes, patterns := t.root.node.count(context.TODO())
@@ -510,16 +502,25 @@ func (t *tTrie) Metrics() *TMetrics {
 	t.numNodes.Store(uint32(nodes))       //#nosec G115
 	t.numPatterns.Store(uint32(patterns)) //#nosec G115
 
+	// Get the pool metrics snapshot:
+	pm := adPoolMetrics()
+
+	// Read full memory stats
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
 	return &TMetrics{
-		PoolCreations:  pm.Created,
-		PoolReturns:    pm.Returned,
-		PoolSize:       pm.Size,
-		Nodes:          t.numNodes.Load(),
-		Patterns:       t.numPatterns.Load(),
-		Hits:           t.numHits.Load(),
-		Misses:         t.numMisses.Load(),
-		Reloads:        t.numReloads.Load(),
-		Retries:        t.numRetries.Load(),
+		PoolCreations: pm.Created,
+		PoolReturns:   pm.Returned,
+		PoolSize:      pm.Size,
+		// ---
+		Nodes:    t.numNodes.Load(),
+		Patterns: t.numPatterns.Load(),
+		Hits:     t.numHits.Load(),
+		Misses:   t.numMisses.Load(),
+		Reloads:  t.numReloads.Load(),
+		Retries:  t.numRetries.Load(),
+		// ---
 		HeapAllocs:     m.Mallocs,
 		HeapFrees:      m.Frees,
 		GCPauseTotalNs: m.PauseTotalNs,

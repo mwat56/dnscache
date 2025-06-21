@@ -331,7 +331,7 @@ func Test_tTrie_Count(t *testing.T) {
 		{
 			name:         "03 - empty trie",
 			trie:         newTrie(),
-			wantNodes:    1,
+			wantNodes:    0,
 			wantPatterns: 0,
 		},
 		{
@@ -341,7 +341,7 @@ func Test_tTrie_Count(t *testing.T) {
 				t.root.node.add(context.TODO(), tPartsList{"tld"})
 				return t
 			}(),
-			wantNodes:    2, // root + tld
+			wantNodes:    1,
 			wantPatterns: 1,
 		},
 		{
@@ -352,7 +352,7 @@ func Test_tTrie_Count(t *testing.T) {
 				t.root.node.add(context.TODO(), tPartsList{"tld", "domain"})
 				return t
 			}(),
-			wantNodes:    3, // root + tld + domain.tld
+			wantNodes:    2,
 			wantPatterns: 2,
 		},
 		{
@@ -364,7 +364,7 @@ func Test_tTrie_Count(t *testing.T) {
 				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "sub"})
 				return t
 			}(),
-			wantNodes:    4, // root + tld + domain.tld + sub.domain.tld
+			wantNodes:    3,
 			wantPatterns: 3,
 		},
 		{
@@ -375,8 +375,33 @@ func Test_tTrie_Count(t *testing.T) {
 				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "sub", "*"})
 				return t
 			}(),
-			wantNodes:    5, // root + 4 parts
+			wantNodes:    4,
 			wantPatterns: 2,
+		},
+		{
+			name: "08 - two patterns incl. wildcard and one more",
+			trie: func() *tTrie {
+				t := newTrie()
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "sub"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "sub", "*"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "sub", "host"})
+				return t
+			}(),
+			wantNodes:    5,
+			wantPatterns: 3,
+		},
+		{
+			name: "09 - two patterns incl. wildcard and one more and one more",
+			trie: func() *tTrie {
+				t := newTrie()
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "sub"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "sub", "*"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "sub", "host"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "sub", "host", "grand"})
+				return t
+			}(),
+			wantNodes:    6,
+			wantPatterns: 4,
 		},
 		/* */
 		// TODO: Add test cases.
@@ -720,20 +745,20 @@ func Test_tTrie_Merge(t *testing.T) {
 } // Test_tTrie_Merge()
 
 func Test_tTrie_Metrics(t *testing.T) {
-	func() {
-		// This test would succeed only if it was run as part of only
-		// this file's tests, but would fail when run as part of the
-		// package's whole test suite, as the pool is initialised only
-		// once and the pool metric's numbers will be influenced by
-		// other tests. To circumvent this, we reset the pool's metrics
-		// to a known state: empty pool, no creations or returns.
-		np := nodePool
-		for range len(np.nodes) {
-			_ = np.Get()
-		}
-		np.created.Store(0)
-		np.returned.Store(0)
-	}()
+	// clear := func() {
+	// 	// This test would succeed only if it was run as part of only
+	// 	// this file's tests, but would fail when run as part of the
+	// 	// package's whole test suite, as the pool is initialised only
+	// 	// once and the pool metric's numbers will be influenced by
+	// 	// other tests. To circumvent this, we reset the pool's metrics
+	// 	// to a known state: empty pool, no creations or returns.
+	// 	np := adNodePool
+	// 	for range len(np.nodes) {
+	// 		_ = np.get()
+	// 	}
+	// 	np.created.Store(0)
+	// 	np.returned.Store(0)
+	// }
 	tests := []struct {
 		name string
 		trie *tTrie
@@ -747,18 +772,68 @@ func Test_tTrie_Metrics(t *testing.T) {
 		},
 		{
 			name: "02 - nil root",
-			trie: &tTrie{},
+			trie: func() *tTrie {
+				return &tTrie{}
+			}(),
 			want: nil,
 		},
 		{
 			name: "03 - initialised trie",
-			trie: newTrie(),
+			trie: func() *tTrie {
+				t := newTrie()
+				t.root.node.add(context.TODO(), tPartsList{"tld"})
+				return t
+			}(),
 			want: &TMetrics{
 				PoolCreations:  1,
 				PoolReturns:    0,
 				PoolSize:       0,
 				Nodes:          1,
+				Patterns:       1,
+				Hits:           0,
+				Misses:         0,
+				Reloads:        0,
+				Retries:        0,
+				HeapAllocs:     0,
+				HeapFrees:      0,
+				GCPauseTotalNs: 0,
+			},
+		},
+		{
+			name: "04 - initialised trie with no patterns",
+			trie: func() *tTrie {
+				return newTrie()
+			}(),
+			want: &TMetrics{
+				PoolCreations:  1,
+				PoolReturns:    0,
+				PoolSize:       0,
+				Nodes:          0,
 				Patterns:       0,
+				Hits:           0,
+				Misses:         0,
+				Reloads:        0,
+				Retries:        0,
+				HeapAllocs:     0,
+				HeapFrees:      0,
+				GCPauseTotalNs: 0,
+			},
+		},
+		{
+			name: "05 - initialised trie with patterns",
+			trie: func() *tTrie {
+				t := newTrie()
+				t.root.node.add(context.TODO(), tPartsList{"tld"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain"})
+				t.root.node.add(context.TODO(), tPartsList{"tld", "domain", "sub"})
+				return t
+			}(),
+			want: &TMetrics{
+				PoolCreations:  3,
+				PoolReturns:    0,
+				PoolSize:       0,
+				Nodes:          3,
+				Patterns:       3,
 				Hits:           0,
 				Misses:         0,
 				Reloads:        0,
