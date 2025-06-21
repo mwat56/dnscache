@@ -128,26 +128,26 @@ func (p *TPool) Get() (rNode any, rErr error) {
 		// Pool not initialised yet
 		p.reset(0)
 	}
-	var created uint32
+	var c uint32
 
 	select {
 	case rNode = <-p.nodes:
 		// Node was taken from pool
 	default:
-		rNode, created = p.newNode()
+		rNode, c = p.newNode()
 	}
-
-	go sendMetrics(p, created, 0)
+	go sendMetrics(p, c, 0)
 
 	return
 } // Get()
 
 // `Metrics()` returns the current pool metrics.
 //
-// The returned metrics are a snapshot of the current state at the time of
-// calling this method. The metrics may change as soon as the method returns.
+// The returned metrics are a snapshot of the current state at the time
+// of calling this method. The metrics may change as soon as the method
+// returns.
 //
-// The metrics are:
+// The returned metrics show:
 //   - `Size`: Current number of nodes in the pool.
 //   - `Created`: Number of nodes created by the pool.
 //   - `Returned`: Number of nodes returned to the pool.
@@ -164,9 +164,9 @@ func (p *TPool) Metrics() (rMetric *TPoolMetrics, rErr error) {
 		p.reset(0)
 	}
 	rMetric = &TPoolMetrics{
+		Size:     len(p.nodes),
 		Created:  p.created.Load(),
 		Returned: p.returned.Load(),
-		Size:     len(p.nodes),
 	}
 
 	return
@@ -177,7 +177,7 @@ func (p *TPool) Metrics() (rMetric *TPoolMetrics, rErr error) {
 //
 // The channel can be used for real-time monitoring of the pool's activity.
 //
-// The metrics are:
+// The metrics returned by the channel show:
 //   - `Size`: Current number of nodes in the pool.
 //   - `Created`: Number of nodes created by the pool.
 //   - `Returned`: Number of nodes returned to the pool.
@@ -213,11 +213,11 @@ func (p *TPool) newNode() (rNode any, rCreated uint32) {
 	}
 
 	rNode = p.New()
+	rCreated = p.created.Add(1)
 	//TODO: Go 1.24:
 	// runtime.AddCleanup(rNode, func() {
 	// 	p.put(rNode)
 	// })
-	rCreated = p.created.Add(1)
 
 	return
 } // newNode()
@@ -242,7 +242,6 @@ func (p *TPool) Put(aNode any) (rErr error) {
 	}
 
 	r := p.returned.Add(1)
-
 	if (r & poolDropMask) == poolDropMask {
 		// Drop the node if the drop mask matches.
 		// This leaves the given `aNode` for GC.
@@ -275,7 +274,7 @@ func (p *TPool) reset(aSize int) {
 	// Pre-allocate some nodes for the pool:
 	if nil != p.New {
 		for range aSize {
-			p.Put(p.New())
+			p.Put(p.New()) //#nosec G104 -- ignore the (here impossible) error
 		}
 	}
 } // reset()
@@ -296,14 +295,14 @@ func sendMetrics(aPool *TPool, aCreate, aReturn uint32) {
 		aReturn = aPool.returned.Load()
 	}
 	m := &TPoolMetrics{
+		Size:     len(aPool.nodes),
 		Created:  aCreate,
 		Returned: aReturn,
-		Size:     len(aPool.nodes),
 	}
 
 	select {
 	case aPool.mCh <- m:
-		// Counters were written
+		// Metrics were written
 		runtime.Gosched()
 	case <-time.After(time.Second):
 		// Timeout (just to be sure to not block)
