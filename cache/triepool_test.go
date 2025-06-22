@@ -7,13 +7,14 @@ Copyright © 2025  M.Watermann, 10247 Berlin, Germany
 package cache
 
 import (
+	"context"
+	"net"
 	"testing"
 )
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
 func Test_newTrieNode(t *testing.T) {
-	initTriePool() // initialise the node pool
 	tests := []struct {
 		name     string
 		wantNode *tTrieNode
@@ -57,131 +58,36 @@ func Test_newTrieNode(t *testing.T) {
 	}
 } // Test_newTrieNode()
 
-func Test_nodePoolMetrics(t *testing.T) {
-	clear := func() {
-		// These tests would succeed only if the test was run as part
-		// of only this file's tests, but would fail when run as part
-		// of the package's whole test suite, as the pool is
-		// initialised only once and the pool metric's numbers will be
-		// influenced by other tests. To circumvent this, we reset the
-		// pool's metrics to a known state: empty pool, no creations
-		// or returns.
-		np := triePool
-		for range len(np.nodes) {
-			_ = np.get()
-		}
-		np.created.Store(0)
-		np.returned.Store(0)
-	}
-
+func Test_putNode(t *testing.T) {
 	tests := []struct {
-		name    string
-		prepare func()
-		want    *tTriePoolMetrics
+		name string
+		node *tTrieNode
 	}{
 		{
-			name:    "01 - empty pool",
-			prepare: clear,
-			want: &tTriePoolMetrics{
-				Created:  0,
-				Returned: 0,
-				Size:     0,
-			},
+			name: "01 - nil node",
+			node: nil,
 		},
 		{
-			name: "02 - pool with one node",
-			prepare: func() {
-				clear()
-				_ = newTrieNode()
-			},
-			want: &tTriePoolMetrics{
-				Created:  1,
-				Returned: 0,
-				Size:     0,
-			},
+			name: "02 - empty node",
+			node: &tTrieNode{tChildren: make(tChildren)},
 		},
 		{
-			name: "03 - pool with two nodes",
-			prepare: func() {
-				clear()
-				_ = newTrieNode()
-				n2 := newTrieNode()
-				triePool.put(n2)
-			},
-			want: &tTriePoolMetrics{
-				Created:  2,
-				Returned: 1,
-				Size:     1,
-			},
+			name: "03 - node with child",
+			node: func() *tTrieNode {
+				n := newTrieNode()
+				n.Create(context.TODO(), tPartsList{"tld", "domain"},
+					tIpList{net.ParseIP("1.2.3.4")}, 0)
+				return n
+			}(),
 		},
-		{
-			name: "04 - pool with two nodes",
-			prepare: func() {
-				clear()
-				n1 := newTrieNode()
-				n2 := newTrieNode()
-				triePool.put(n1)
-				triePool.put(n2)
-			},
-			want: &tTriePoolMetrics{
-				Created:  2,
-				Returned: 2,
-				Size:     2,
-			},
-		},
-		{
-			name: "05 - pool with three nodes",
-			prepare: func() {
-				clear()
-				n1 := newTrieNode()
-				_ = newTrieNode()
-				n2 := newTrieNode()
-				_ = newTrieNode()
-				triePool.put(n1)
-				triePool.put(n2)
-			},
-			want: &tTriePoolMetrics{
-				Created:  4,
-				Returned: 2,
-				Size:     2,
-			},
-		},
-
 		// TODO: Add test cases.
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if nil != tc.prepare {
-				tc.prepare()
-			}
-			got := triePoolMetrics()
-
-			if nil == got {
-				if nil != tc.want {
-					t.Error("nodePoolMetrics() = nil, want non-nil")
-				}
-				return
-			}
-			if nil == tc.want {
-				t.Errorf("nodePoolMetrics() =\n%v\nwant 'nil'",
-					got)
-				return
-			}
-			if got.Created != tc.want.Created {
-				t.Errorf("nodePoolMetrics() Created = %d, want %d",
-					got.Created, tc.want.Created)
-			}
-			if got.Returned != tc.want.Returned {
-				t.Errorf("nodePoolMetrics() Returned = %d, want %d",
-					got.Returned, tc.want.Returned)
-			}
-			if got.Size != tc.want.Size {
-				t.Errorf("nodePoolMetrics() Size = %d, want %d",
-					got.Size, tc.want.Size)
-			}
+			putNode(tc.node)
 		})
 	}
-} // Test_nodePoolMetrics()
+} // Test_putNode()
 
 /* _EoF_ */
