@@ -9,14 +9,14 @@ package adlist
 import (
 	"sync"
 
-	"github.com/mwat56/dnscache/internal/nodepool"
+	np "github.com/mwat56/dnscache/internal/nodepool"
 )
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
 var (
 	// `adNodePool` is the active pool of `tNode` instances.
-	adNodePool *nodepool.TPool
+	adNodePool *np.TPool
 
 	// `adNodePoolInit` makes sure, the node pool is initialised only once.
 	adNodePoolInit sync.Once
@@ -36,12 +36,9 @@ func init() {
 // During unit testing, this function could be called manually.
 func initADnodePool() {
 	adNodePoolInit.Do(func() {
-		adNodePool = &nodepool.TPool{
-			New: func() any {
-				return &tNode{tChildren: make(tChildren)}
-			},
-		}
-		_ = adNodePool.Put(nil) // reset the pool
+		adNodePool = np.Init(func() any {
+			return &tNode{tChildren: make(tChildren)}
+		}, 0)
 	})
 } // initADnodePool()
 
@@ -99,8 +96,8 @@ func putNode(aNode *tNode) {
 // `adPoolMetrics()` returns the current pool metrics.
 //
 // Returns:
-//   - `*nodepool.TPoolMetrics`: Current pool metrics.
-func adPoolMetrics() (rMetrics *nodepool.TPoolMetrics) {
+//   - `*np.TPoolMetrics`: Current pool metrics.
+func adPoolMetrics() (rMetrics *np.TPoolMetrics) {
 	if nil == adNodePool {
 		initADnodePool() // lazy initialisation
 	}
