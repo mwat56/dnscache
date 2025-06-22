@@ -87,7 +87,10 @@ var (
 // Parameters:
 //   - `aNewFunc`: Factory function for creating new items.
 //   - `aSize`: Initial size of the pool.
-func Init(aNewFunc func() any, aSize int) (rPool *TPool, rErr error) {
+//
+// Returns:
+//   - `*TPool`: A new pool.
+func Init(aNewFunc func() any, aSize int) (rPool *TPool) {
 	if 0 >= aSize {
 		aSize = poolInitSize
 	}

@@ -54,7 +54,7 @@ func Test_TPool_Clear(t *testing.T) {
 } // Test_TPool_Clear()
 
 func Test_TPool_Get(t *testing.T) {
-	np, _ := Init(func() any { return "nil" }, 1)
+	np := Init(func() any { return "nil" }, 1)
 	tests := []struct {
 		name    string
 		pool    *TPool
@@ -129,7 +129,7 @@ func Test_TPool_Get(t *testing.T) {
 } // Test_TPool_Get()
 
 func Test_TPool_Metrics(t *testing.T) {
-	np, _ := Init(func() any { return "nil" }, 0)
+	np := Init(func() any { return "nil" }, 0)
 	clear := func(aPool *TPool) {
 		aPool.Clear()
 	}
@@ -377,7 +377,7 @@ func Test_TPool_Put(t *testing.T) {
 		aPool.Clear()
 	}
 	np3 := &TPool{New: func() any { return "returned-node" }}
-	np4, _ := Init(func() any { return "nil" }, 1)
+	np4 := Init(func() any { return "nil" }, 1)
 
 	tests := []struct {
 		name        string
