@@ -63,6 +63,11 @@ func newNode() (rNode *tNode) {
 	} else {
 		var ok bool
 		if rNode, ok = item.(*tNode); ok {
+			if nil == rNode {
+				// Uninitialised pool during testing
+				rNode = &tNode{tChildren: make(tChildren)}
+				return
+			}
 			// Clear/reset the old field values
 			if 0 < len(rNode.tChildren) {
 				rNode.tChildren = make(tChildren)

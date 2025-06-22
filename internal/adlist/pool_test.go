@@ -21,12 +21,17 @@ func Test_newNode(t *testing.T) {
 			name:     "01 - empty node",
 			wantNode: &tNode{tChildren: make(tChildren)},
 		},
+		{
+			name:     "02 - new node",
+			wantNode: newNode(),
+		},
 		// TODO: Add test cases.
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			gotNode := newNode()
+
 			if nil == gotNode {
 				if nil != tc.wantNode {
 					t.Error("newNode() = nil, want non-nil")
