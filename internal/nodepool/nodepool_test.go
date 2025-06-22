@@ -13,18 +13,48 @@ import (
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
-func Test_Get(t *testing.T) {
-	np, _ := Init(func() any { return "nil" }, 0)
-	clear := func() {
-		// Clear the pool
-		for range len(np.nodes) {
-			_, _ = np.Get()
-		}
-		// Reset counters
-		np.created.Store(0)
-		np.returned.Store(0)
+func Test_TPool_Clear(t *testing.T) {
+	tests := []struct {
+		name string
+		pool *TPool
+	}{
+		/* */
+		{
+			name: "01 - clear nil pool",
+			pool: nil,
+		},
+		{
+			name: "02 - clear empty pool",
+			pool: &TPool{},
+		},
+		{
+			name: "03 - clear non-empty pool",
+			pool: func() *TPool {
+				p := &TPool{nodes: make(chan any, 1)}
+				p.Put("node 03")
+				return p
+			}(),
+		},
+		/* */
+		// TODO: Add test cases.
 	}
 
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.pool.Clear()
+
+			if nil == tc.pool {
+				return
+			}
+			if 0 != len(tc.pool.nodes) {
+				t.Errorf("Clear() = %d, want 0", len(tc.pool.nodes))
+			}
+		})
+	}
+} // Test_TPool_Clear()
+
+func Test_TPool_Get(t *testing.T) {
+	np, _ := Init(func() any { return "nil" }, 1)
 	tests := []struct {
 		name    string
 		pool    *TPool
@@ -50,7 +80,7 @@ func Test_Get(t *testing.T) {
 		{
 			name:    "03 - empty initialised pool",
 			pool:    np,
-			prepare: clear,
+			prepare: np.Clear,
 			want:    "nil",
 			wantErr: false,
 		},
@@ -58,7 +88,7 @@ func Test_Get(t *testing.T) {
 			name: "04 - get from empty initialised pool",
 			pool: np,
 			prepare: func() {
-				clear()
+				np.Clear()
 				np.Put("node 04")
 			},
 			want:    "node 04",
@@ -96,18 +126,12 @@ func Test_Get(t *testing.T) {
 			}
 		})
 	}
-} // Test_Get()
+} // Test_TPool_Get()
 
-func Test_Metrics(t *testing.T) {
+func Test_TPool_Metrics(t *testing.T) {
 	np, _ := Init(func() any { return "nil" }, 0)
-	// Clear the pool to a known (empty) state
 	clear := func(aPool *TPool) {
-		for range len(aPool.nodes) {
-			_, _ = aPool.Get()
-		}
-		// Reset counters
-		aPool.created.Store(0)
-		aPool.returned.Store(0)
+		aPool.Clear()
 	}
 	np2 := &TPool{}
 	np3 := &TPool{New: func() any { return "np3" }}
@@ -127,9 +151,9 @@ func Test_Metrics(t *testing.T) {
 				clear(np)
 			},
 			want: &TPoolMetrics{
+				Size:     0,
 				Created:  0,
 				Returned: 0,
-				Size:     0,
 			},
 			wantErr: false,
 		},
@@ -141,9 +165,9 @@ func Test_Metrics(t *testing.T) {
 				_, _ = np.Get()
 			},
 			want: &TPoolMetrics{
+				Size:     0,
 				Created:  1,
 				Returned: 0,
-				Size:     0,
 			},
 			wantErr: false,
 		},
@@ -156,9 +180,9 @@ func Test_Metrics(t *testing.T) {
 				np.Put(node)
 			},
 			want: &TPoolMetrics{
+				Size:     1,
 				Created:  1,
 				Returned: 1,
-				Size:     1,
 			},
 			wantErr: false,
 		},
@@ -172,9 +196,9 @@ func Test_Metrics(t *testing.T) {
 				}
 			},
 			want: &TPoolMetrics{
+				Size:     0,
 				Created:  5,
 				Returned: 0,
-				Size:     0,
 			},
 			wantErr: false,
 		},
@@ -193,9 +217,9 @@ func Test_Metrics(t *testing.T) {
 				}
 			},
 			want: &TPoolMetrics{
+				Size:     5,
 				Created:  5,
 				Returned: 5,
-				Size:     5,
 			},
 			wantErr: false,
 		},
@@ -208,18 +232,20 @@ func Test_Metrics(t *testing.T) {
 		{
 			name: "07 - queuing metrics from non-initialised pool",
 			pool: np2,
-			want: &TPoolMetrics{Created: 0,
-				Returned: 0,
+			want: &TPoolMetrics{
 				Size:     0,
+				Created:  0,
+				Returned: 0,
 			},
 			wantErr: false,
 		},
 		{
 			name: "08 - creating and returning multiple nodes in empty pool",
 			pool: np3,
-			want: &TPoolMetrics{Created: 0,
-				Returned: 512, // returned during `reset()`
+			want: &TPoolMetrics{
 				Size:     448, // (512 / 8) * 7
+				Created:  0,
+				Returned: 512, // returned during `reset()`
 			},
 			wantErr: false,
 		},
@@ -266,9 +292,9 @@ func Test_Metrics(t *testing.T) {
 			}
 		})
 	}
-} // Test_Metrics()
+} // Test_TPool_Metrics()
 
-func Test_MetricsChannel(t *testing.T) {
+func Test_TPool_MetricsChannel(t *testing.T) {
 	tests := []struct {
 		name    string
 		pool    *TPool
@@ -344,17 +370,11 @@ func Test_MetricsChannel(t *testing.T) {
 			}
 		})
 	}
-} // Test_MetricsChannel()
+} // Test_TPool_MetricsChannel()
 
-func Test_Put(t *testing.T) {
+func Test_TPool_Put(t *testing.T) {
 	clear := func(aPool *TPool) {
-		// Clear the pool
-		for range len(aPool.nodes) {
-			_, _ = aPool.Get()
-		}
-		// Reset counters
-		aPool.created.Store(0)
-		aPool.returned.Store(0)
+		aPool.Clear()
 	}
 	np3 := &TPool{New: func() any { return "returned-node" }}
 	np4, _ := Init(func() any { return "nil" }, 1)
@@ -376,9 +396,9 @@ func Test_Put(t *testing.T) {
 			name: "02 - put node uninitialised pool",
 			pool: &TPool{},
 			wantMetrics: &TPoolMetrics{
+				Size:     1,
 				Created:  0,
 				Returned: 1,
-				Size:     1,
 			},
 			wantErr: false,
 		},
@@ -389,9 +409,9 @@ func Test_Put(t *testing.T) {
 				clear(np3)
 			},
 			wantMetrics: &TPoolMetrics{
+				Size:     449, // (512 / 8) * 7) + 1
 				Created:  0,
 				Returned: 513, // 512 + 1
-				Size:     449, // (512 / 8) * 7) + 1
 			},
 			wantErr: false,
 		},
@@ -402,9 +422,9 @@ func Test_Put(t *testing.T) {
 				clear(np4)
 			},
 			wantMetrics: &TPoolMetrics{
+				Size:     1,
 				Created:  0,
 				Returned: 1,
-				Size:     1,
 			},
 			wantErr: false,
 		},
@@ -413,15 +433,14 @@ func Test_Put(t *testing.T) {
 			pool: np4,
 			prepare: func() {
 				clear(np4)
-				// Put multiple nodes to the pool
 				for range 3 {
 					np4.Put("returned-node")
 				}
 			},
 			wantMetrics: &TPoolMetrics{
+				Size:     4, // 3 + 1
 				Created:  0,
 				Returned: 4, // 3 + 1
-				Size:     4, // 3 + 1
 			},
 			wantErr: false,
 		},
@@ -484,6 +503,6 @@ func Test_Put(t *testing.T) {
 			}
 		})
 	}
-} // Test_Put()
+} // Test_TPool_Put()
 
 /* _EoF_ */
