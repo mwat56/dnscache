@@ -68,9 +68,9 @@ func newTrie() *tTrie {
 	return &tTrie{
 		lastLoadTime: time.Now(), // time of the trie's file loading
 		filename:     "Trie.txt", // default filename for local storage
-		root: tRoot{
+		root: tRoot{ // root node of the trie
 			node: newNode(),
-		}, // root node of the trie
+		},
 	}
 } // newTrie()
 

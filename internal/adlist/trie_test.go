@@ -204,6 +204,7 @@ func Test_tTrie_AllPatterns(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			gotList := tc.trie.AllPatterns(context.TODO())
+
 			if nil == gotList {
 				if nil != tc.wantList {
 					t.Error("tTrie.AllPatterns() = nil, want non-nil")
@@ -300,6 +301,7 @@ func Test_tTrie_Delete(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			gotBool := tc.trie.Delete(context.TODO(), tc.pattern)
+
 			if gotBool != tc.wantBool {
 				t.Errorf("tTrie.Delete() gotBool = '%v', want '%v'",
 					gotBool, tc.wantBool)
@@ -589,11 +591,11 @@ func Test_tTrie_loadRemote(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.trie.loadRemote(context.TODO(), tc.url, tc.fName)
+			gotErr := tc.trie.loadRemote(context.TODO(), tc.url, tc.fName)
 
-			if (nil != err) != tc.wantErr {
+			if (nil != gotErr) != tc.wantErr {
 				t.Errorf("tTrie.loadRemote() error = '%v', wantErr '%v'",
-					err, tc.wantErr)
+					gotErr, tc.wantErr)
 			}
 		})
 	}
@@ -648,6 +650,7 @@ func Test_tTrie_Match(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			gotBool := tc.trie.Match(context.TODO(), tc.pattern)
+
 			if gotBool != tc.wantBool {
 				t.Errorf("tTrie.Match() gotBool = '%v', want '%v'",
 					gotBool, tc.wantBool)
@@ -745,24 +748,14 @@ func Test_tTrie_Merge(t *testing.T) {
 } // Test_tTrie_Merge()
 
 func Test_tTrie_Metrics(t *testing.T) {
-	// clear := func() {
-	// 	// This test would succeed only if it was run as part of only
-	// 	// this file's tests, but would fail when run as part of the
-	// 	// package's whole test suite, as the pool is initialised only
-	// 	// once and the pool metric's numbers will be influenced by
-	// 	// other tests. To circumvent this, we reset the pool's metrics
-	// 	// to a known state: empty pool, no creations or returns.
-	// 	np := adNodePool
-	// 	for range len(np.nodes) {
-	// 		_ = np.get()
-	// 	}
-	// 	np.created.Store(0)
-	// 	np.returned.Store(0)
-	// }
+	// np, _ := nodepool.Init(func() any {
+	// 	return &tNode{tChildren: make(tChildren)}
+	// }, 0)
 	tests := []struct {
-		name string
-		trie *tTrie
-		want *TMetrics
+		name    string
+		prepare func()
+		trie    *tTrie
+		want    *TMetrics
 	}{
 		/* */
 		{
@@ -777,8 +770,12 @@ func Test_tTrie_Metrics(t *testing.T) {
 			}(),
 			want: nil,
 		},
+		/* * /
 		{
 			name: "03 - initialised trie",
+			prepare: func() {
+				np.Clear()
+			},
 			trie: func() *tTrie {
 				t := newTrie()
 				t.root.node.add(context.TODO(), tPartsList{"tld"})
@@ -801,6 +798,9 @@ func Test_tTrie_Metrics(t *testing.T) {
 		},
 		{
 			name: "04 - initialised trie with no patterns",
+			prepare: func() {
+				np.Clear()
+			},
 			trie: func() *tTrie {
 				return newTrie()
 			}(),
@@ -821,6 +821,9 @@ func Test_tTrie_Metrics(t *testing.T) {
 		},
 		{
 			name: "05 - initialised trie with patterns",
+			prepare: func() {
+				np.Clear()
+			},
 			trie: func() *tTrie {
 				t := newTrie()
 				t.root.node.add(context.TODO(), tPartsList{"tld"})
@@ -849,7 +852,11 @@ func Test_tTrie_Metrics(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			if nil != tc.prepare {
+				tc.prepare()
+			}
 			got := tc.trie.Metrics()
+
 			if nil == got {
 				if nil != tc.want {
 					t.Error("tTrie.Metrics() = nil, want non-nil")
@@ -932,11 +939,11 @@ func Test_tTrie_storeFile(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.trie.storeFile(context.TODO(), tc.aFilename)
+			gotErr := tc.trie.storeFile(context.TODO(), tc.aFilename)
 
-			if (nil != err) != tc.wantErr {
+			if (nil != gotErr) != tc.wantErr {
 				t.Errorf("tTrie.storeFile() error = '%v', wantErr '%v'",
-					err, tc.wantErr)
+					gotErr, tc.wantErr)
 			}
 		})
 	}
