@@ -85,11 +85,11 @@ func Test_TADlist_AddAllow(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			gotROK := tc.adl.AddAllow(context.TODO(), tc.pattern)
+			gotOK := tc.adl.AddAllow(context.TODO(), tc.pattern)
 
-			if gotROK != tc.wantOK {
+			if gotOK != tc.wantOK {
 				t.Errorf("TADlist.AddAllow() = '%v', want '%v'",
-					gotROK, tc.wantOK)
+					gotOK, tc.wantOK)
 			}
 		})
 	}
@@ -386,6 +386,7 @@ func Test_TADlist_Equal(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			gotOK := tc.adl.Equal(tc.other)
+
 			if gotOK != tc.wantOK {
 				t.Errorf("TADlist.Equal() = '%v', want '%v'",
 					gotOK, tc.wantOK)
@@ -414,7 +415,6 @@ func Test_TADlist_LoadAllow(t *testing.T) {
 			fName:   "doesnotexist-02.txt",
 			wantErr: true,
 		},
-		/* */
 		{
 			name: "03 - valid file with empty lines",
 			adl:  New(t.TempDir()),
@@ -425,7 +425,19 @@ func Test_TADlist_LoadAllow(t *testing.T) {
 				_ = f.Close()
 				return fName
 			}(),
-			wantErr: true,
+			wantErr: false,
+		},
+		{
+			name: "04 - valid file with comments",
+			adl:  New(t.TempDir()),
+			fName: func() string {
+				fName := filepath.Join(t.TempDir(), "allow-04.txt")
+				f, _ := os.Create(fName)
+				_, _ = f.WriteString("\n# this file contains only hostnames\nwww.example.com\nwww.other.com\nwww.another.com\n")
+				_ = f.Close()
+				return fName
+			}(),
+			wantErr: false,
 		},
 		/* */
 		// TODO: Add test cases.
@@ -433,11 +445,11 @@ func Test_TADlist_LoadAllow(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.adl.LoadAllow(context.TODO(), tc.fName)
+			gotErr := tc.adl.LoadAllow(context.TODO(), tc.fName)
 
-			if (nil != err) != tc.wantErr {
+			if (nil != gotErr) != tc.wantErr {
 				t.Errorf("TADlist.LoadAllow() error = '%v', wantErr '%v'",
-					err, tc.wantErr)
+					gotErr, tc.wantErr)
 			}
 		})
 	}
@@ -475,11 +487,11 @@ func Test_TADlist_LoadDeny(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.adl.LoadDeny(context.TODO(), tc.urls)
+			gotErr := tc.adl.LoadDeny(context.TODO(), tc.urls)
 
-			if (nil != err) != tc.wantErr {
+			if (nil != gotErr) != tc.wantErr {
 				t.Errorf("TADlist.LoadDeny() error = '%v', wantErr '%v'",
-					err, tc.wantErr)
+					gotErr, tc.wantErr)
 			}
 		})
 	}
@@ -503,7 +515,7 @@ func Test_TADlist_Match(t *testing.T) {
 			name:     "02 - empty hostname",
 			adl:      New(t.TempDir()),
 			hostname: "",
-			want:     ADneutral,
+			want:     ADdeny,
 		},
 		{
 			name:     "03 - non-matching hostname",
@@ -548,6 +560,7 @@ func Test_TADlist_Match(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got := tc.adl.Match(context.TODO(), tc.hostname)
+
 			if got != tc.want {
 				t.Errorf("TADlist.Match() = %v, want %v",
 					got, tc.want)
@@ -590,11 +603,11 @@ func Test_TADlist_Shutdown(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.adl.Shutdown()
+			gotErr := tc.adl.Shutdown()
 
-			if (nil != err) != tc.wantErr {
+			if (nil != gotErr) != tc.wantErr {
 				t.Errorf("TADlist.Shutdown() error = '%v', wantErr '%v'",
-					err, tc.wantErr)
+					gotErr, tc.wantErr)
 			}
 		})
 	}
@@ -632,11 +645,11 @@ func Test_TADlist_StoreAllow(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.adl.StoreAllow(context.TODO())
+			gotErr := tc.adl.StoreAllow(context.TODO())
 
-			if (nil != err) != tc.wantErr {
+			if (nil != gotErr) != tc.wantErr {
 				t.Errorf("TADlist.StoreAllow() error = '%v', wantErr '%v'",
-					err, tc.wantErr)
+					gotErr, tc.wantErr)
 			}
 		})
 	}
@@ -670,11 +683,11 @@ func Test_TADlist_StoreDeny(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.adl.StoreDeny(context.TODO())
+			gotErr := tc.adl.StoreDeny(context.TODO())
 
-			if (nil != err) != tc.wantErr {
+			if (nil != gotErr) != tc.wantErr {
 				t.Errorf("TADlist.StoreDeny() error = '%v', wantErr '%v'",
-					err, tc.wantErr)
+					gotErr, tc.wantErr)
 			}
 		})
 	}
@@ -742,6 +755,7 @@ func Test_TADlist_String(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got := tc.adl.String()
+
 			if got != tc.want {
 				t.Errorf("TADlist.String() =\n%q\nwant\n%q",
 					got, tc.want)
@@ -816,6 +830,7 @@ func Test_TADlist_UpdateAllow(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			gotOK := tc.adl.UpdateAllow(context.TODO(), tc.oldPattern, tc.newPattern)
+
 			if gotOK != tc.wantOK {
 				t.Errorf("TADlist.UpdateAllow() = '%v', want '%v'",
 					gotOK, tc.wantOK)
@@ -890,6 +905,7 @@ func Test_TADlist_UpdateDeny(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			gotOK := tc.adl.UpdateDeny(context.TODO(), tc.oldPattern, tc.newPattern)
+
 			if gotOK != tc.wantOK {
 				t.Errorf("TADlist.UpdateDeny() = '%v', want '%v'",
 					gotOK, tc.wantOK)
@@ -949,11 +965,11 @@ func Test_urlPath2Filename(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := urlPath2Filename(tc.url)
+			got, gotErr := urlPath2Filename(tc.url)
 
-			if (err != nil) != tc.wantErr {
+			if (gotErr != nil) != tc.wantErr {
 				t.Errorf("urlPath2Filename() error = '%v', wantErr '%v'",
-					err, tc.wantErr)
+					gotErr, tc.wantErr)
 				return
 			}
 			if got != tc.want {

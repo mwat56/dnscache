@@ -113,6 +113,73 @@ func New(aDataDir string) *TADlist {
 } // New()
 
 // ---------------------------------------------------------------------------
+// Helper functions:
+
+// `absListFilename()` combines `aDataDir` and `aFileName` to an absolute path.
+//
+// If `aFileName` is already an absolute path, it is returned as is.
+//
+// Parameters:
+//   - `aDataDir`: The directory to use for local storage of the allow/deny lists.
+//   - `aFileName`: The filename to use for the allow/deny list.
+//   - `aDefName`: The default filename to use if `aFileName` is empty.
+//
+// Returns:
+//   - `string`: The absolute path of the filename.
+//   - `error`: An error in case of problems, or `nil` otherwise.
+func absListFilename(aDataDir, aFileName, aDefName string) (string, error) {
+	if filepath.IsAbs(aFileName) {
+		return aFileName, nil
+	}
+	var err error
+
+	filename := filepath.Join(aDataDir, aFileName)
+	if filename, err = filepath.Abs(filename); nil == err {
+		return filename, nil
+	}
+
+	// Fallback to default filename
+	filename = filepath.Join(aDataDir, aDefName)
+
+	return filepath.Abs(filename)
+} // absListFilename()
+
+// `urlPath2Filename()` converts an URL path to a filename.
+//
+// The function replaces all invalid characters with underscores where
+// "invalid" is everything that is not a letter, a digit, a dash or an
+// underscore.
+//
+// Parameters:
+//   - `aURL`: The URL to convert.
+//
+// Returns:
+//   - `string`: The generated filename.
+//   - `error`: An error in case of problems, or `nil` otherwise.
+func urlPath2Filename(aURL string) (string, error) {
+	if aURL = strings.TrimSpace(aURL); 0 == len(aURL) {
+		return "", ErrInvalidUrl
+	}
+
+	url, err := url.Parse(aURL)
+	if nil != err {
+		return "", err
+	}
+
+	path := url.Path
+	// Remove leading slash
+	if 0 != len(path) && '/' == path[0] {
+		path = path[1:]
+	}
+	if 0 == len(path) {
+		return "", ErrInvalidUrl
+	}
+
+	// Replace invalid characters with underscores
+	return string(filenameRE.ReplaceAll([]byte(path), []byte("_"))), nil
+} // urlPath2Filename()
+
+// ---------------------------------------------------------------------------
 // `TADlist` methods:
 
 // `addPattern()` inserts a FQDN name/pattern (with optional wildcard)
@@ -123,18 +190,18 @@ func New(aDataDir string) *TADlist {
 //
 // Parameters:
 //   - `aCtx`: The context to use for the operation.
-//   - `aPattern`: The FQDN name/pattern to insert.
+//   - `aHostname`: The FQDN name/pattern to insert.
 //   - `aList`: The list to insert the pattern into.
 //
 // Returns:
 //   - `bool`: `true` if the pattern was added, `false` otherwise.
-func addPattern(aCtx context.Context, aPattern string, aList *tTrie) bool {
-	if aPattern = strings.TrimSpace(aPattern); 0 == len(aPattern) {
+func addPattern(aCtx context.Context, aHostname string, aList *tTrie) bool {
+	if aHostname = strings.TrimSpace(aHostname); 0 == len(aHostname) {
 		return false
 	}
 
 	ctx, cancel := context.WithTimeout(aCtx, time.Second<<2)
-	if ok := aList.Add(ctx, aPattern); !ok {
+	if ok := aList.Add(ctx, aHostname); !ok {
 		cancel()
 		return false
 	}
@@ -153,16 +220,16 @@ func addPattern(aCtx context.Context, aPattern string, aList *tTrie) bool {
 //
 // Parameters:
 //   - `aCtx`: The context to use for the operation.
-//   - `aPattern`: The FQDN name/pattern to insert.
+//   - `aHostname`: The FQDN name/pattern to insert.
 //
 // Returns:
 //   - `bool`: `true` if the pattern was added, `false` otherwise.
-func (adl *TADlist) AddAllow(aCtx context.Context, aPattern string) bool {
+func (adl *TADlist) AddAllow(aCtx context.Context, aHostname string) bool {
 	if (nil == adl) || (nil == adl.allow) || (nil == adl.allow.root.node) {
 		return false
 	}
 
-	return addPattern(aCtx, aPattern, adl.allow)
+	return addPattern(aCtx, aHostname, adl.allow)
 } // AddAllow()
 
 // `AddDeny()` inserts a FQDN name/pattern (with optional wildcard) into
@@ -170,16 +237,16 @@ func (adl *TADlist) AddAllow(aCtx context.Context, aPattern string) bool {
 //
 // Parameters:
 //   - `aCtx`: The context to use for the operation.
-//   - `aPattern`: The FQDN name/pattern to insert.
+//   - `aHostname`: The FQDN name/pattern to insert.
 //
 // Returns:
 //   - `bool`: `true` if the pattern was added, `false` otherwise.
-func (adl *TADlist) AddDeny(aCtx context.Context, aPattern string) bool {
+func (adl *TADlist) AddDeny(aCtx context.Context, aHostname string) bool {
 	if (nil == adl) || (nil == adl.deny) || (nil == adl.deny.root.node) {
 		return false
 	}
 
-	return addPattern(aCtx, aPattern, adl.deny)
+	return addPattern(aCtx, aHostname, adl.deny)
 } // AddDeny()
 
 // `deletePattern()` removes a FQDN name/pattern (with optional wildcard)
@@ -190,23 +257,23 @@ func (adl *TADlist) AddDeny(aCtx context.Context, aPattern string) bool {
 //
 // Parameters:
 //   - `aCtx`: The context to use for the operation.
-//   - `aPattern`: The FQDN name/pattern to remove.
+//   - `aHostname`: The FQDN name/pattern to remove.
 //   - `aList`: The list to remove the pattern from.
 //
 // Returns:
 //   - `bool`: `true` if the pattern was found and deleted, `false` otherwise.
-func deletePattern(aCtx context.Context, aPattern string, aList *tTrie) bool {
+func deletePattern(aCtx context.Context, aHostname string, aList *tTrie) bool {
 	if (nil == aList) || (nil == aList.root.node) {
 		return false
 	}
 
-	if aPattern = strings.TrimSpace(aPattern); 0 == len(aPattern) {
+	if aHostname = strings.TrimSpace(aHostname); 0 == len(aHostname) {
 		// An empty pattern can not be removed from the list.
 		return false
 	}
 
 	ctx, cancel := context.WithTimeout(aCtx, time.Second<<2)
-	if ok := aList.Delete(ctx, aPattern); !ok {
+	if ok := aList.Delete(ctx, aHostname); !ok {
 		cancel()
 		return false
 	}
@@ -225,16 +292,16 @@ func deletePattern(aCtx context.Context, aPattern string, aList *tTrie) bool {
 //
 // Parameters:
 //   - `aCtx`: The context to use for the operation.
-//   - `aPattern`: The FQDN name/pattern to remove.
+//   - `aHostname`: The FQDN name/pattern to remove.
 //
 // Returns:
 //   - `bool`: `true` if the pattern was found and deleted, `false` otherwise.
-func (adl *TADlist) DeleteAllow(aCtx context.Context, aPattern string) bool {
+func (adl *TADlist) DeleteAllow(aCtx context.Context, aHostname string) bool {
 	if (nil == adl) || (nil == adl.allow) || (nil == adl.allow.root.node) {
 		return false
 	}
 
-	return deletePattern(aCtx, aPattern, adl.allow)
+	return deletePattern(aCtx, aHostname, adl.allow)
 } // DeleteAllow()
 
 // `DeleteDeny()` removes a FQDN name/pattern (with optional wildcard)
@@ -242,16 +309,16 @@ func (adl *TADlist) DeleteAllow(aCtx context.Context, aPattern string) bool {
 //
 // Parameters:
 //   - `aCtx`: The context to use for the operation.
-//   - `aPattern`: The FQDN name/pattern to remove.
+//   - `aHostname`: The FQDN name/pattern to remove.
 //
 // Returns:
 //   - `bool`: `true` if the pattern was found and deleted, `false` otherwise.
-func (adl *TADlist) DeleteDeny(aCtx context.Context, aPattern string) bool {
+func (adl *TADlist) DeleteDeny(aCtx context.Context, aHostname string) bool {
 	if (nil == adl) || (nil == adl.deny) || (nil == adl.deny.root.node) {
 		return false
 	}
 
-	return deletePattern(aCtx, aPattern, adl.deny)
+	return deletePattern(aCtx, aHostname, adl.deny)
 } // DeleteDeny()
 
 // `Equal()` checks whether the two lists are equal.
@@ -299,8 +366,7 @@ func (adl *TADlist) LoadAllow(aCtx context.Context, aFilename string) (rErr erro
 	if aFilename = strings.TrimSpace(aFilename); 0 == len(aFilename) {
 		aFilename = adAllowFile
 	}
-	aFilename = filepath.Join(adl.datadir, aFilename)
-	if aFilename, rErr = filepath.Abs(aFilename); nil != rErr {
+	if aFilename, rErr = absListFilename(adl.datadir, aFilename, adAllowFile); nil != rErr {
 		return
 	}
 
@@ -314,46 +380,8 @@ func (adl *TADlist) LoadAllow(aCtx context.Context, aFilename string) (rErr erro
 
 	rErr = adl.allow.loadLocal(ctx, aFilename)
 
-	//TODO: See, whether the `datadir` property is `os.TempDir()` and
-	// copy the allow file to a permanent location.
-
 	return
 } // LoadAllow()
-
-// `urlPath2Filename()` converts an URL path to a filename.
-//
-// The function replaces all invalid characters with underscores where
-// "invalid" is everything that is not a letter, a digit, a dash or an
-// underscore.
-//
-// Parameters:
-//   - `aURL`: The URL to convert.
-//
-// Returns:
-//   - `string`: The generated filename.
-//   - `error`: An error in case of problems, or `nil` otherwise.
-func urlPath2Filename(aURL string) (string, error) {
-	if aURL = strings.TrimSpace(aURL); 0 == len(aURL) {
-		return "", ErrInvalidUrl
-	}
-
-	url, err := url.Parse(aURL)
-	if nil != err {
-		return "", err
-	}
-
-	path := url.Path
-	// Remove leading slash
-	if 0 != len(path) && '/' == path[0] {
-		path = path[1:]
-	}
-	if 0 == len(path) {
-		return "", ErrInvalidUrl
-	}
-
-	// Replace invalid characters with underscores
-	return string(filenameRE.ReplaceAll([]byte(path), []byte("_"))), nil
-} // urlPath2Filename()
 
 // `loadRemoteDeny()` downloads a file from the given URL and saves it in
 // the specified directory with the given filename.
@@ -494,17 +522,17 @@ func (adl *TADlist) LoadDeny(aCtx context.Context, aURLs []string) error {
 //
 // Parameters:
 //   - `aCtx`: The context to use for the operation.
-//   - `aHostPattern`: The hostname to check.
+//   - `aHostname`: The hostname to check.
 //
 // Returns:
 //   - `TADresult`: The result of the lookup.
-func (adl *TADlist) Match(aCtx context.Context, aHostPattern string) TADresult {
+func (adl *TADlist) Match(aCtx context.Context, aHostname string) TADresult {
 	if nil == adl {
 		return ADneutral
 	}
 
-	if aHostPattern = strings.TrimSpace(aHostPattern); 0 == len(aHostPattern) {
-		return ADneutral
+	if aHostname = strings.TrimSpace(aHostname); 0 == len(aHostname) {
+		return ADdeny
 	}
 
 	if nil != aCtx.Err() {
@@ -522,12 +550,12 @@ func (adl *TADlist) Match(aCtx context.Context, aHostPattern string) TADresult {
 	)
 	wg.Add(2)
 	go func() {
-		denyOK.Store(adl.deny.Match(ctx, aHostPattern))
+		denyOK.Store(adl.deny.Match(ctx, aHostname))
 		wg.Done()
 	}()
 
 	go func() {
-		allowOK.Store(adl.allow.Match(ctx, aHostPattern))
+		allowOK.Store(adl.allow.Match(ctx, aHostname))
 		wg.Done()
 	}()
 
@@ -615,6 +643,14 @@ func (adl *TADlist) StoreAllow(aCtx context.Context) error {
 		return ErrListNil
 	}
 
+	// Combine `aList.filename` with `adl.datadir`
+	// and make it a absolute path.
+	fName, err := absListFilename(adl.datadir, adl.allow.filename, adAllowFile)
+	if nil != err {
+		return err
+	}
+	adl.allow.filename = fName
+
 	return storeList(aCtx, adl.allow)
 } // StoreAllow()
 
@@ -632,6 +668,14 @@ func (adl *TADlist) StoreDeny(aCtx context.Context) error {
 	if (nil == adl) || (nil == adl.deny) || (nil == adl.deny.root.node) {
 		return ErrListNil
 	}
+
+	// Combine `aList.filename` with `adl.datadir`
+	// and make it a absolute path.
+	fName, err := absListFilename(adl.datadir, adl.deny.filename, adDenyFile)
+	if nil != err {
+		return err
+	}
+	adl.deny.filename = fName
 
 	return storeList(aCtx, adl.deny)
 } // StoreDeny()
