@@ -97,128 +97,6 @@ func getCacheEntries(aState *tAppState) ([]tCacheEntry, error) {
 // ---------------------------------------------------------------------------
 // Page related functions:
 
-// `showCachePage()` displays the DNS cache entries.
-//
-// Parameters:
-//   - `aState`: The application state.
-func showCachePage(aState *tAppState) {
-	// Create table for cache entries
-	table := tview.NewTable().SetBorders(true)
-	tableBox := table.Box.SetTitle(" DNS Cache Entries ").
-		SetTitleColor(colourHeader).
-		SetBorder(true)
-
-	// Add headers
-	table.SetCell(0, 0, tview.NewTableCell("Hostname").SetTextColor(colourHighlight).SetSelectable(false))
-	table.SetCell(0, 1, tview.NewTableCell("IP Addresses").SetTextColor(colourHighlight).SetSelectable(false))
-	// table.SetCell(0, 2, tview.NewTableCell("Expires").SetTextColor(colourHighlight).SetSelectable(false))
-
-	// Function to populate the table with cache entries
-	populateTable := func() {
-		// Clear existing rows (except header)
-		// First get the row count
-		if rowCount := table.GetRowCount(); 1 < rowCount {
-			// If there are rows beyond the header
-			// clear the table and re-add the header
-			table.Clear()
-
-			// Re-add headers
-			table.SetCell(0, 0, tview.NewTableCell("Hostname").SetTextColor(colourHighlight).SetSelectable(false))
-			table.SetCell(0, 1, tview.NewTableCell("IP Addresses").SetTextColor(colourHighlight).SetSelectable(false))
-		}
-
-		// Get cache entries
-		entries, err := getCacheEntries(aState)
-		if nil != err {
-			aState.statusBar.SetText(fmt.Sprintf("Error getting cache entries: %v", err))
-			return
-		}
-
-		// Add entries to table
-		for i, entry := range entries {
-			row := i + 1 // +1 for header row
-
-			// Format IP addresses as comma-separated string
-			ipStrings := make([]string, len(entry.IPs))
-			for j, ip := range entry.IPs {
-				ipStrings[j] = ip.String()
-			}
-			ipText := strings.Join(ipStrings, ", ")
-
-			// Format expiration time
-			// expiresText := entry.ExpiresAt.Format("2006-01-02 15:04:05")
-
-			// Add cells
-			table.SetCell(row, 0, tview.NewTableCell(entry.Hostname))
-			table.SetCell(row, 1, tview.NewTableCell(ipText))
-			// table.SetCell(row, 2, tview.NewTableCell(expiresText))
-		}
-
-		aState.statusBar.SetText(fmt.Sprintf("Loaded %d cache entries", len(entries)))
-	}
-
-	// Initial population
-	populateTable()
-
-	// Set up key handling for the table
-	table.SetInputCapture(func(aEvent *tcell.EventKey) *tcell.EventKey {
-		switch aEvent.Key() {
-		case tcell.KeyEscape:
-			aState.pages.SwitchToPage("default")
-			return nil
-
-		case tcell.KeyDelete:
-			// Delete the selected entry
-			row, _ := table.GetSelection()
-			if 0 < row && table.GetRowCount() > row {
-				hostname := table.GetCell(row, 0).Text
-
-				// Create context for the operation
-				ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-				defer cancel()
-
-				// Delete from cache
-				aState.resolver.ICacheList.Delete(ctx, hostname)
-
-				// Refresh table
-				populateTable()
-
-				aState.statusBar.SetText(fmt.Sprintf("Deleted entry for %s", hostname))
-			}
-			return nil
-
-		case tcell.KeyRune:
-			if 'r' == aEvent.Rune() || 'R' == aEvent.Rune() {
-				// Refresh the table
-				populateTable()
-				return nil
-			}
-		}
-		return aEvent
-	})
-
-	// Add controls
-	controls := tview.NewTextView().
-		SetText("Enter: View Details | Delete: Remove Entry | R: Refresh | ESC: Back").
-		SetTextColor(colourText)
-
-	// Use the box for styling
-	tableBox.SetBorderPadding(0, 0, 1, 1)
-
-	// Create layout
-	flex := tview.NewFlex().
-		SetDirection(tview.FlexRow).
-		AddItem(table, 0, 1, true).
-		AddItem(controls, 1, 0, false)
-
-	// Add page
-	aState.pages.AddPage("cache", flex, true, true)
-	aState.app.SetFocus(table)
-
-	// Update status
-	aState.statusBar.SetText("Viewing DNS cache entries")
-} // showCachePage()
-
 // `showAllowListPage()` displays the allow lists
 //
 // Parameters:
@@ -383,46 +261,132 @@ func showBlockListPage(aState *tAppState) {
 	aState.statusBar.SetText("Managing block lists")
 } // showBlockListPage()
 
-// `showMetricsPage()` displays the metrics
+// `showCachePage()` displays the DNS cache entries.
 //
 // Parameters:
 //   - `aState`: The application state.
-func showMetricsPage(aState *tAppState) {
-	// Create text view for metrics
-	metrics := tview.NewTextView().
-		SetDynamicColors(true)
-	_ = metrics.Box.SetTitle(" DNS Cache Metrics ")
-	_ = metrics.Box.SetTitleColor(colourHeader)
-	_ = metrics.Box.SetBorder(true)
+func showCachePage(aState *tAppState) {
+	// Create table for cache entries
+	table := tview.NewTable().SetBorders(true)
+	tableBox := table.Box.SetTitle(" DNS Cache Entries ").
+		SetTitleColor(colourHeader).
+		SetBorder(true)
 
-	// Get current metrics
-	metrics.SetText(aState.resolver.Metrics().String())
+	// Add headers
+	table.SetCell(0, 0, tview.NewTableCell("Hostname").SetTextColor(colourHighlight).SetSelectable(false))
+	table.SetCell(0, 1, tview.NewTableCell("IP Addresses").SetTextColor(colourHighlight).SetSelectable(false))
+	// table.SetCell(0, 2, tview.NewTableCell("Expires").SetTextColor(colourHighlight).SetSelectable(false))
 
-	// Add refresh button
-	refresh := tview.NewButton("Refresh").SetSelectedFunc(func() {
-		// Update metrics
-		metrics.SetText(aState.resolver.Metrics().String())
+	// Function to populate the table with cache entries
+	populateTable := func() {
+		// Clear existing rows (except header)
+		// First get the row count
+		if rowCount := table.GetRowCount(); 1 < rowCount {
+			// If there are rows beyond the header
+			// clear the table and re-add the header
+			table.Clear()
+
+			// Re-add headers
+			table.SetCell(0, 0, tview.NewTableCell("Hostname").SetTextColor(colourHighlight).SetSelectable(false))
+			table.SetCell(0, 1, tview.NewTableCell("IP Addresses").SetTextColor(colourHighlight).SetSelectable(false))
+		}
+
+		// Get cache entries
+		entries, err := getCacheEntries(aState)
+		if nil != err {
+			aState.statusBar.SetText(fmt.Sprintf("Error getting cache entries: %v", err))
+			return
+		}
+
+		// Add entries to table
+		for i, entry := range entries {
+			row := i + 1 // +1 for header row
+
+			// Format IP addresses as comma-separated string
+			ipStrings := make([]string, len(entry.IPs))
+			for j, ip := range entry.IPs {
+				ipStrings[j] = ip.String()
+			}
+			ipText := strings.Join(ipStrings, ", ")
+
+			// Format expiration time
+			// expiresText := entry.ExpiresAt.Format("2006-01-02 15:04:05")
+
+			// Add cells
+			table.SetCell(row, 0, tview.NewTableCell(entry.Hostname))
+			table.SetCell(row, 1, tview.NewTableCell(ipText))
+			// table.SetCell(row, 2, tview.NewTableCell(expiresText))
+		}
+
+		aState.statusBar.SetText(fmt.Sprintf("Loaded %d cache entries", len(entries)))
+	}
+
+	// Initial population
+	populateTable()
+
+	// Set up key handling for the table
+	table.SetInputCapture(func(aEvent *tcell.EventKey) *tcell.EventKey {
+		switch aEvent.Key() {
+		case tcell.KeyEscape:
+			aState.pages.SwitchToPage("default")
+			return nil
+
+		case tcell.KeyDelete:
+			// Delete the selected entry
+			row, _ := table.GetSelection()
+			if 0 < row && table.GetRowCount() > row {
+				hostname := table.GetCell(row, 0).Text
+
+				// Create context for the operation
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+				defer cancel()
+
+				// Delete from cache
+				aState.resolver.ICacheList.Delete(ctx, hostname)
+
+				// Refresh table
+				populateTable()
+
+				aState.statusBar.SetText(fmt.Sprintf("Deleted entry for %s", hostname))
+			}
+			return nil
+
+		case tcell.KeyRune:
+			if 'r' == aEvent.Rune() || 'R' == aEvent.Rune() {
+				// Refresh the table
+				populateTable()
+				return nil
+			}
+		}
+		return aEvent
 	})
+
+	// Add controls
+	controls := tview.NewTextView().
+		SetText("Enter: View Details | Delete: Remove Entry | R: Refresh | ESC: Back").
+		SetTextColor(colourText)
+
+	// Use the box for styling
+	tableBox.SetBorderPadding(0, 0, 1, 1)
 
 	// Create layout
 	flex := tview.NewFlex().
 		SetDirection(tview.FlexRow).
-		AddItem(metrics, 0, 1, true).
-		AddItem(refresh, 1, 0, false)
+		AddItem(table, 0, 1, true).
+		AddItem(controls, 1, 0, false)
 
 	// Add page
-	aState.pages.AddPage("metrics", flex, true, true)
-	aState.app.SetFocus(metrics)
+	aState.pages.AddPage("cache", flex, true, true)
+	aState.app.SetFocus(table)
 
 	// Update status
-	aState.statusBar.SetText("Viewing metrics")
-} // showMetricsPage()
+	aState.statusBar.SetText("Viewing DNS cache entries")
+} // showCachePage()
 
 // `showConfigPage()` displays the configuration
 //
 // Parameters:
 //   - `aState`: The application state.
-
 func showConfigPage(aState *tAppState) {
 	// Try to load existing configuration
 	config, err := loadConfiguration(gConfigFile)
@@ -448,12 +412,11 @@ func showConfigPage(aState *tAppState) {
 		SetBorder(true)
 
 	// Add configuration fields
-
 	form.AddInputField("Data Directory:", config.DataDir, 50, nil, changeFunc)
 	form.AddInputField("Cache Size:", strconv.Itoa(config.CacheSize), 10, nil, changeFunc)
 	form.AddInputField("IP Address (for daemon mode, empty for all interfaces):", config.Address, 50, nil, changeFunc)
 	form.AddInputField("Port (for daemon mode):", strconv.Itoa(int(config.Port)), 10, nil, changeFunc)
-
+	form.AddInputField("DNS Forwarder (for non-A/AAAA requests):", config.Forwarder, 50, nil, changeFunc)
 	form.AddInputField("Refresh Interval (minutes):", strconv.Itoa(int(config.RefreshInterval)), 10, nil, changeFunc)
 	form.AddInputField("TTL (minutes):", strconv.Itoa(int(config.TTL)), 10, nil, changeFunc)
 
@@ -474,11 +437,12 @@ func showConfigPage(aState *tAppState) {
 		if (0 >= port) || (65535 < port) {
 			port = 53
 		}
-		refreshInterval, _ := strconv.Atoi(form.GetFormItem(4).(*tview.InputField).GetText())
+		forwarder := form.GetFormItem(4).(*tview.InputField).GetText()
+		refreshInterval, _ := strconv.Atoi(form.GetFormItem(5).(*tview.InputField).GetText())
 		if (0 > refreshInterval) || (255 < refreshInterval) {
 			refreshInterval = 0
 		}
-		ttl, _ := strconv.Atoi(form.GetFormItem(5).(*tview.InputField).GetText())
+		ttl, _ := strconv.Atoi(form.GetFormItem(6).(*tview.InputField).GetText())
 		if 0 > ttl {
 			ttl = 0
 		} else if 255 < ttl {
@@ -490,6 +454,7 @@ func showConfigPage(aState *tAppState) {
 			Address:         address,
 			DataDir:         dataDir,
 			CacheSize:       cacheSize,
+			Forwarder:       forwarder,
 			Port:            port,
 			RefreshInterval: uint8(refreshInterval), //#nosec G115
 			TTL:             uint8(ttl),             //#nosec G115
@@ -525,5 +490,40 @@ func showConfigPage(aState *tAppState) {
 	// Update status
 	aState.statusBar.SetText("Editing configuration")
 } // showConfigPage()
+
+// `showMetricsPage()` displays the metrics
+//
+// Parameters:
+//   - `aState`: The application state.
+func showMetricsPage(aState *tAppState) {
+	// Create text view for metrics
+	metrics := tview.NewTextView().
+		SetDynamicColors(true)
+	_ = metrics.Box.SetTitle(" DNS Cache Metrics ")
+	_ = metrics.Box.SetTitleColor(colourHeader)
+	_ = metrics.Box.SetBorder(true)
+
+	// Get current metrics
+	metrics.SetText(aState.resolver.Metrics().String())
+
+	// Add refresh button
+	refresh := tview.NewButton("Refresh").SetSelectedFunc(func() {
+		// Update metrics
+		metrics.SetText(aState.resolver.Metrics().String())
+	})
+
+	// Create layout
+	flex := tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(metrics, 0, 1, true).
+		AddItem(refresh, 1, 0, false)
+
+	// Add page
+	aState.pages.AddPage("metrics", flex, true, true)
+	aState.app.SetFocus(metrics)
+
+	// Update status
+	aState.statusBar.SetText("Viewing metrics")
+} // showMetricsPage()
 
 /* _EoF_ */

@@ -170,7 +170,7 @@ func main() {
 
 	// Start DNS server if not in console mode
 	if !cmdLineConf.ConsoleMode {
-		if err := startDNSserver(myResolver, config.Address, config.Port); nil != err {
+		if err := startDNSserver(myResolver, config.Address, config.Port, config.Forwarder); nil != err {
 			fmt.Printf("Failed to start DNS server: %v\n", err)
 			os.Exit(1)
 		}

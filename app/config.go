@@ -68,6 +68,7 @@ type (
 		DNSServers      []string `json:"dnsServers,omitempty"`
 		Address         string   `json:"address,omitempty"`
 		DataDir         string   `json:"dataDir,omitempty"`
+		Forwarder       string   `json:"forwarder,omitempty"`
 		CacheSize       int      `json:"cacheSize,omitempty"`
 		Port            int      `json:"port,omitempty"`
 		RefreshInterval uint8    `json:"refreshInterval,omitempty"`
@@ -242,6 +243,7 @@ func (c *tConfiguration) Equal(aConfig *tConfiguration) bool {
 	return (c.Address == aConfig.Address) &&
 		(c.DataDir == aConfig.DataDir) &&
 		(c.CacheSize == aConfig.CacheSize) &&
+		(c.Forwarder == aConfig.Forwarder) &&
 		(c.Port == aConfig.Port) &&
 		(c.RefreshInterval == aConfig.RefreshInterval) &&
 		(c.TTL == aConfig.TTL)
