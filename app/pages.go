@@ -24,11 +24,11 @@ import (
 
 const (
 	// UI colours:
-	colourBackground = tcell.ColorBlack
-	colourError      = tcell.ColorRed
-	colourHeader     = tcell.ColorYellow
-	colourHighlight  = tcell.ColorGreen
-	colourText       = tcell.ColorWhite
+	// colourBackground = tcell.ColorBlack
+	// colourError      = tcell.ColorRed
+	colourHeader    = tcell.ColorYellow
+	colourHighlight = tcell.ColorGreen
+	colourText      = tcell.ColorWhite
 )
 
 type (
@@ -39,6 +39,7 @@ type (
 		resolver      *dnscache.TResolver
 		statusBar     *tview.TextView
 		configChanged bool
+		remoteConn    net.Conn // Connection to remote instance (if any)
 	}
 
 	// `tCacheEntry` represents a DNS cache entry with hostname and IPs
@@ -424,14 +425,15 @@ func showMetricsPage(aState *tAppState) {
 
 func showConfigPage(aState *tAppState) {
 	// Try to load existing configuration
-	config, err := loadConfiguration(configFile)
+	config, err := loadConfiguration(gConfigFile)
 	if nil != err {
 		// Use default values if config file doesn't exist
 		config = tConfiguration{
+			DataDir:         os.TempDir(),
 			CacheSize:       1024,
+			Port:            53,
 			RefreshInterval: 5,
 			TTL:             60,
-			DataDir:         os.TempDir(),
 		}
 	}
 	somethingChanged := false
@@ -446,10 +448,14 @@ func showConfigPage(aState *tAppState) {
 		SetBorder(true)
 
 	// Add configuration fields
+
+	form.AddInputField("Data Directory:", config.DataDir, 50, nil, changeFunc)
 	form.AddInputField("Cache Size:", strconv.Itoa(config.CacheSize), 10, nil, changeFunc)
+	form.AddInputField("IP Address (for daemon mode, empty for all interfaces):", config.Address, 50, nil, changeFunc)
+	form.AddInputField("Port (for daemon mode):", strconv.Itoa(int(config.Port)), 10, nil, changeFunc)
+
 	form.AddInputField("Refresh Interval (minutes):", strconv.Itoa(int(config.RefreshInterval)), 10, nil, changeFunc)
 	form.AddInputField("TTL (minutes):", strconv.Itoa(int(config.TTL)), 10, nil, changeFunc)
-	form.AddInputField("Data Directory:", config.DataDir, 50, nil, changeFunc)
 
 	// Add buttons
 	form.AddButton("Save", func() {
@@ -458,32 +464,39 @@ func showConfigPage(aState *tAppState) {
 		}
 
 		// Get values from form
-		cacheSize, _ := strconv.Atoi(form.GetFormItem(0).(*tview.InputField).GetText())
+		dataDir := form.GetFormItem(0).(*tview.InputField).GetText()
+		cacheSize, _ := strconv.Atoi(form.GetFormItem(1).(*tview.InputField).GetText())
 		if 0 >= cacheSize {
 			cacheSize = 1 << 10
 		}
-		refreshInterval, _ := strconv.Atoi(form.GetFormItem(1).(*tview.InputField).GetText())
+		address := form.GetFormItem(2).(*tview.InputField).GetText()
+		port, _ := strconv.Atoi(form.GetFormItem(3).(*tview.InputField).GetText())
+		if (0 >= port) || (65535 < port) {
+			port = 53
+		}
+		refreshInterval, _ := strconv.Atoi(form.GetFormItem(4).(*tview.InputField).GetText())
 		if (0 > refreshInterval) || (255 < refreshInterval) {
 			refreshInterval = 0
 		}
-		ttl, _ := strconv.Atoi(form.GetFormItem(2).(*tview.InputField).GetText())
+		ttl, _ := strconv.Atoi(form.GetFormItem(5).(*tview.InputField).GetText())
 		if 0 > ttl {
 			ttl = 0
 		} else if 255 < ttl {
 			ttl = 255
 		}
-		dataDir := form.GetFormItem(3).(*tview.InputField).GetText()
 
 		// Update configuration
 		newConfig := tConfiguration{
+			Address:         address,
 			DataDir:         dataDir,
 			CacheSize:       cacheSize,
+			Port:            port,
 			RefreshInterval: uint8(refreshInterval), //#nosec G115
 			TTL:             uint8(ttl),             //#nosec G115
 		}
 
 		// Save configuration
-		if err := saveConfiguration(newConfig, configFile); nil != err {
+		if err := saveConfiguration(newConfig, gConfigFile); nil != err {
 			aState.statusBar.SetText(fmt.Sprintf("Error saving configuration: %v", err))
 			return
 		}
@@ -493,7 +506,7 @@ func showConfigPage(aState *tAppState) {
 
 		aState.configChanged = true
 		aState.statusBar.SetText("Configuration saved. Restart required for changes to take effect.")
-	})
+	}) // Save button
 
 	form.AddButton("Cancel", func() {
 		if !somethingChanged {
