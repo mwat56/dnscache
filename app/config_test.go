@@ -14,6 +14,189 @@ import (
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
+func Test_tCmdLineArgs_Equal(t *testing.T) {
+	tests := []struct {
+		name    string
+		cmdLine *tCmdLineArgs
+		other   *tCmdLineArgs
+		wantOK  bool
+	}{
+		/* */
+		{
+			name:    "01 - nil cmdLine and other",
+			cmdLine: nil,
+			other:   nil,
+			wantOK:  true,
+		},
+		{
+			name:    "02 - nil cmdLine",
+			cmdLine: nil,
+			other:   &tCmdLineArgs{},
+			wantOK:  false,
+		},
+		{
+			name:    "03 - nil other",
+			cmdLine: &tCmdLineArgs{},
+			other:   nil,
+			wantOK:  false,
+		},
+		{
+			name:    "04 - equal",
+			cmdLine: &tCmdLineArgs{},
+			other:   &tCmdLineArgs{},
+			wantOK:  true,
+		},
+		{
+			name:    "05 - not equal (1)",
+			cmdLine: &tCmdLineArgs{ConfigPathName: "config.json"},
+			other:   &tCmdLineArgs{},
+			wantOK:  false,
+		},
+		{
+			name:    "06 - not equal (2)",
+			cmdLine: &tCmdLineArgs{Port: 53},
+			other:   &tCmdLineArgs{},
+			wantOK:  false,
+		},
+		{
+			name:    "07 - not equal (3)",
+			cmdLine: &tCmdLineArgs{ConsoleMode: true},
+			other:   &tCmdLineArgs{},
+			wantOK:  false,
+		},
+		{
+			name:    "08 - not equal (4)",
+			cmdLine: &tCmdLineArgs{DaemonMode: true},
+			other:   &tCmdLineArgs{},
+			wantOK:  false,
+		},
+		/* */
+		// TODO: Add test cases.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if gotOK := tc.cmdLine.Equal(tc.other); gotOK != tc.wantOK {
+				t.Errorf("tCmdLineArgs.Equal() = '%v', want '%v'",
+					gotOK, tc.wantOK)
+			}
+		})
+	}
+} // Test_tCmdLineArgs_Equal()
+
+func Test_parseCmdLineArgs(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want tCmdLineArgs
+	}{
+		/* */
+		{
+			name: "01 - empty args",
+			args: []string{},
+			want: tCmdLineArgs{
+				ConfigPathName: gConfigFile,
+				Port:           53,
+				ConsoleMode:    false,
+				DaemonMode:     true, // set by sanity check
+			},
+		},
+		{
+			name: "02 - invalid config path",
+			args: []string{"-config", "/path/to/config.json"},
+			want: tCmdLineArgs{
+				ConfigPathName: "/mnt/tmp/dnscache.json", // set by sanity check
+				Port:           53,
+				ConsoleMode:    false,
+				DaemonMode:     true, // set by sanity check
+			},
+		},
+		{
+			name: "03 - port",
+			args: []string{"-port", "8053"},
+			want: tCmdLineArgs{
+				ConfigPathName: gConfigFile,
+				Port:           8053,
+				ConsoleMode:    false,
+				DaemonMode:     true, // set by sanity check
+			},
+		},
+		{
+			name: "04 - console mode",
+			args: []string{"-console"},
+			want: tCmdLineArgs{
+				ConfigPathName: gConfigFile,
+				Port:           53,
+				ConsoleMode:    true,
+				DaemonMode:     false,
+			},
+		},
+		{
+			name: "05 - daemon mode",
+			args: []string{"-daemon"},
+			want: tCmdLineArgs{
+				ConfigPathName: gConfigFile,
+				Port:           53,
+				ConsoleMode:    false,
+				DaemonMode:     true,
+			},
+		},
+		{
+			name: "06 - multiple flags",
+			args: []string{"-config", "custom.json", "-port", "5353", "-console", "-daemon"},
+			want: tCmdLineArgs{
+				ConfigPathName: "/mnt/tmp/dnscache.json", // set by sanity check
+				Port:           5353,
+				ConsoleMode:    false, // disabled by sanity check
+				DaemonMode:     true,
+			},
+		},
+		{
+			name: "07 - invalid port",
+			args: []string{"-port", "invalid"},
+			want: tCmdLineArgs{
+				ConfigPathName: gConfigFile,
+				Port:           53,
+				ConsoleMode:    false,
+				DaemonMode:     true, // set by sanity check
+			},
+		},
+		{
+			name: "08 - negative port",
+			args: []string{"-port", "-1"},
+			want: tCmdLineArgs{
+				ConfigPathName: gConfigFile,
+				Port:           53, // corrected by sanity check
+				ConsoleMode:    false,
+				DaemonMode:     true, // set by sanity check
+			},
+		},
+		/* */
+		{
+			name: "09 - help request",
+			args: []string{"--help"},
+			want: tCmdLineArgs{
+				ConfigPathName: "/mnt/tmp/dnscache.json", // set by sanity check
+				Port:           53,
+				ConsoleMode:    false,
+				DaemonMode:     true, // set by sanity check
+			},
+		},
+		/* */
+		// TODO: Add test cases.
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := parseCmdLineArgs(tc.args)
+			if !got.Equal(&tc.want) {
+				t.Errorf("parseCmdLineArgs() =\n%+v\nwant\n%+v",
+					got, tc.want)
+			}
+		})
+	}
+} // Test_parseCmdLineArgs()
+
 func Test_loadConfiguration(t *testing.T) {
 	tests := []struct {
 		name     string
