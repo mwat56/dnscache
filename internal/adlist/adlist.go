@@ -161,12 +161,12 @@ func urlPath2Filename(aURL string) (string, error) {
 		return "", ErrInvalidUrl
 	}
 
-	url, err := url.Parse(aURL)
+	uri, err := url.Parse(aURL)
 	if nil != err {
 		return "", err
 	}
 
-	path := url.Path
+	path := uri.Path
 	// Remove leading slash
 	if 0 != len(path) && '/' == path[0] {
 		path = path[1:]
@@ -475,8 +475,8 @@ func (adl *TADlist) LoadDeny(aCtx context.Context, aURLs []string) error {
 	// Process all provided URLs
 	for _, uri := range aURLs {
 		// Avoid closure capturing of loop variables
-		url := strings.TrimSpace(uri)
-		if 0 == len(url) {
+		uri := strings.TrimSpace(uri)
+		if 0 == len(uri) {
 			continue
 		}
 
@@ -487,7 +487,7 @@ func (adl *TADlist) LoadDeny(aCtx context.Context, aURLs []string) error {
 				// Send error to channel
 				errChan <- fmt.Errorf("URL %q: %w", aUrl, err)
 			}
-		}(url)
+		}(uri)
 	}
 	wg.Wait()
 	close(errChan) // Safe closure after all sends are done
