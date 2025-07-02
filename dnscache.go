@@ -76,11 +76,11 @@ type (
 	TResolver struct {
 		sync.RWMutex
 		dnsServers       []string
+		cache.ICacheList               //list of DNS cache entries
 		abortExpire      chan struct{} // signal to abort `autoExpire()`
 		abortRefresh     chan struct{} // signal to abort `autoRefresh()`
 		adlist           *adl.TADlist  // allow/deny list to check before DNS
 		resolver         *net.Resolver // DNS resolver to use
-		cache.ICacheList               //list of DNS cache entries
 		ttl              time.Duration // TTL for cache entries
 		retries          uint8         // max. number of retries for DNS lookups
 	}
@@ -457,8 +457,6 @@ func (r *TResolver) lookup(aCtx context.Context, aHostname string) ([]net.IP, er
 	return ips, err
 } // lookup()
 
-
-
 // `LookupHost()` resolves a hostname with the given context and
 // caches the result.
 //
@@ -590,15 +588,17 @@ func (r *TResolver) Refresh() {
 // This method should be called when the background expirations are no
 // longer needed. The resolver remains usable after calling `StopExpire()“,
 // but cached entries will no longer be automatically expired.
-func (r *TResolver) StopExpire() {
+func (r *TResolver) StopExpire() *TResolver {
 	select {
 	case r.abortExpire <- struct{}{}:
 		// Signal sent successfully
 		runtime.Gosched()
+
 	default:
 		// Channel already closed or no goroutine listening
-		return
 	}
+
+	return r
 } // StopExpire()
 
 // `StopRefresh()` stops the background refresh goroutine if it's running.
@@ -606,15 +606,17 @@ func (r *TResolver) StopExpire() {
 // This method should be called when the background updates are no
 // longer needed. The resolver remains usable after calling `StopRefresh()“,
 // but cached entries will no longer be automatically refreshed.
-func (r *TResolver) StopRefresh() {
+func (r *TResolver) StopRefresh() *TResolver {
 	select {
 	case r.abortRefresh <- struct{}{}:
 		// Signal sent successfully
 		runtime.Gosched()
+
 	default:
 		// Channel already closed or no goroutine listening
-		return
 	}
+
+	return r
 
 	// Note: We don't clear the cache here as the resolver
 	// remains usable, and cached entries are still valid
