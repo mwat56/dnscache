@@ -8,13 +8,54 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"os"
+	"runtime"
 
 	"github.com/mwat56/dnscache"
 	"github.com/rivo/tview"
 )
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
+
+// `connectToExistingInstance()` connects to an existing instance in remote
+// control mode
+//
+// Parameters:
+//   - `aConfig`: Configuration for the remote instance.
+func connectToExistingInstance(aConfig tConfiguration) {
+	// Create application
+	theApp := tview.NewApplication()
+
+	// Try to connect to the existing instance
+	conn, err := net.Dial("tcp", fmt.Sprintf("localhost:%d", aConfig.Port+1))
+	if nil != err {
+		// Failed to connect, show error and exit
+		fmt.Printf("Failed to connect to existing instance: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Initialize application state structure with remote resolver
+	state := &tAppState{
+		app:      theApp,
+		pages:    tview.NewPages(),
+		resolver: dnscache.New(0),
+		statusBar: tview.NewTextView().
+			SetTextColor(colourText).
+			SetText("Connected to remote instance"),
+		remoteConn: conn,
+	}
+
+	// Run application
+	err = theApp.SetRoot(createMainLayout(state), true).
+		EnableMouse(true).
+		EnablePaste(true).
+		Run()
+	if nil != err {
+		fmt.Printf("Error running application: %v\n", err)
+		os.Exit(1)
+	}
+} // connectToExistingInstance()
 
 // `createMainLayout()` creates the main UI layout.
 //
@@ -71,38 +112,88 @@ func createMainLayout(aState *tAppState) tview.Primitive {
 	return flex
 } // createMainLayout()
 
-// `main()` runs the application
+// `main()` runs the application.
 func main() {
-	// Create theResolver with default options
-	// theResolver := dnscache.New(0) // 5-minute refresh interval
+	// Parse command line arguments
+	cmdLineConf := parseCmdLineArgs(os.Args[1:])
 
-	// Create application
+	// Load configuration file
+	config, err := loadConfiguration(cmdLineConf.ConfigPathName)
+	if nil != err {
+		// Use default values if config file doesn't exist
+		config = tConfiguration{
+			DataDir:         os.TempDir(),
+			CacheSize:       1024,
+			RefreshInterval: 5,
+			TTL:             60,
+		}
+	}
+
+	// Use command line address if provided, otherwise use config address
+	if "" != cmdLineConf.Address {
+		config.Address = cmdLineConf.Address
+	}
+	// Use command line port if provided
+	if 0 != cmdLineConf.Port {
+		config.Port = cmdLineConf.Port
+	}
+
+	// Check for existing instance
+	if isInstanceRunning() {
+		if cmdLineConf.ConsoleMode {
+			// Connect to existing instance in remote control mode
+			connectToExistingInstance(config)
+			return
+		} else {
+			fmt.Println("An instance is already running. Use --console to connect to it.")
+			os.Exit(1)
+		}
+	}
+
+	// Run as daemon if requested (Linux only)
+	if cmdLineConf.DaemonMode && ("linux" == runtime.GOOS) {
+		if err := runAsDaemon(); nil != err {
+			fmt.Printf("Failed to start daemon: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// Create myResolver with configuration
+	myResolver := dnscache.NewWithOptions(dnscache.TResolverOptions{
+		DNSservers:      config.DNSServers,
+		DataDir:         config.DataDir,
+		CacheSize:       config.CacheSize,
+		RefreshInterval: config.RefreshInterval,
+		TTL:             config.TTL,
+	})
+
+	// Start DNS server if not in console mode
+	if !cmdLineConf.ConsoleMode {
+		if err := startDNSserver(myResolver, config.Address, config.Port); nil != err {
+			fmt.Printf("Failed to start DNS server: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// Console mode - create and run the UI
 	theApp := tview.NewApplication()
-
-	// // Create thePages for navigation
-	// thePages := tview.NewPages()
-
-	// // Create status bar
-	// theStatus := tview.NewTextView().
-	// 	SetTextColor(colourText).
-	// 	SetText("Ready")
 
 	// Initialize application state structure
 	state := &tAppState{
 		app:      theApp,
 		pages:    tview.NewPages(),
-		resolver: dnscache.New(0),
+		resolver: myResolver,
 		statusBar: tview.NewTextView().
 			SetTextColor(colourText).
 			SetText("Ready"),
 	}
 
-	// // Create main layout
-	// layout := createMainLayout(state)
-
 	// Run application
-	err := theApp.SetRoot(createMainLayout(state), true).
+	err = theApp.SetRoot(createMainLayout(state), true).
 		EnableMouse(true).
+		EnablePaste(true).
 		Run()
 	if nil != err {
 		fmt.Printf("Error running application: %v\n", err)
