@@ -68,7 +68,7 @@ func Test_isInstanceRunning(t *testing.T) {
 			name: "04 - PID file with current process",
 			setupFunc: func() error {
 				gPidFile = filepath.Join(os.TempDir(), "current-process.pid")
-				return os.WriteFile(gPidFile, []byte(fmt.Sprintf("%d", os.Getpid())), 0600)
+				return os.WriteFile(gPidFile, fmt.Appendf(nil, "%d", os.Getpid()), 0600)
 			},
 			cleanupFunc: func() {
 				os.Remove(gPidFile)

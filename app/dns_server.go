@@ -33,12 +33,12 @@ const (
 	dnsRA uint16 = 1 << 7  // Recursion Available
 
 	// DNS response codes
-	dnsRcodeNoError  uint16 = 0 // No error
-	dnsRcodeFormErr  uint16 = 1 // Format error
-	dnsRcodeServFail uint16 = 2 // Server failure
+	dnsRcodeNoError uint16 = 0 // No error
+	dnsRcodeFormErr uint16 = 1 // Format error
+	// dnsRcodeServFail uint16 = 2 // Server failure
 	dnsRcodeNXDomain uint16 = 3 // Non-existent domain
-	dnsRcodeNotImp   uint16 = 4 // Not implemented
-	dnsRcodeRefused  uint16 = 5 // Query refused
+	// dnsRcodeNotImp   uint16 = 4 // Not implemented
+	// dnsRcodeRefused  uint16 = 5 // Query refused
 
 	// DNS record types
 	dnsTypeA    uint16 = 1  // A record (IPv4)
@@ -149,39 +149,20 @@ func addAnswersToResponse(aResponse []byte, aOffset int, aAnswerCount uint16,
 	return offset, answerCount
 } // addAnswersToResponse()
 
-// extractFirstHostname extracts the first hostname from a DNS request
+// `extractFirstHostname()` extracts the first hostname from a DNS request
+// message.
+//
+// Parameters:
+//   - `aRequest`: The DNS request.
+//
+// Returns:
+//   - `string`: The extracted hostname.
 func extractFirstHostname(aRequest []byte) string {
-	if len(aRequest) <= 12 {
+	if 12 >= len(aRequest) {
 		return ""
 	}
 
-	offset := 12
-	var hostname strings.Builder
-
-	for {
-		if offset >= len(aRequest) {
-			return ""
-		}
-
-		labelLen := int(aRequest[offset])
-		if 0 == labelLen {
-			break
-		}
-
-		offset++
-		if offset+labelLen > len(aRequest) {
-			return ""
-		}
-
-		if hostname.Len() > 0 {
-			hostname.WriteByte('.')
-		}
-
-		hostname.Write(aRequest[offset : offset+labelLen])
-		offset += labelLen
-	}
-
-	return hostname.String()
+	return extractHostname(aRequest[12:])
 } // extractFirstHostname()
 
 // `extractHostname()` extracts a hostname from a DNS question section.
@@ -196,11 +177,13 @@ func extractHostname(aQuestion []byte) string {
 		return ""
 	}
 
-	var hostname strings.Builder
+	var (
+		hostname strings.Builder
+		labelLen int
+	)
 	pos := 0
 	for pos < len(aQuestion) {
-		labelLen := int(aQuestion[pos])
-		if 0 == labelLen {
+		if labelLen = int(aQuestion[pos]); 0 == labelLen {
 			break
 		}
 		pos++
@@ -359,11 +342,9 @@ func handleDNSRequest(aConn net.PacketConn, aAddr net.Addr, aRequest []byte, aRe
 //   - `aForwarderClient`: The client to use for forwarding requests.
 func handleDNSRequestWithForwarder(aConn net.PacketConn, aAddr net.Addr, aRequest []byte,
 	aResolver *dnscache.TResolver, aForwarder string, aForwarderClient iForwarderClient) {
-	log.Printf("DEBUG: handleDNSRequestWithForwarder called with request length %d", len(aRequest))
 
 	// Check if request is too short
 	if 12 > len(aRequest) {
-		log.Printf("DEBUG: Request too short (%d bytes), minimum 12 required", len(aRequest))
 		return
 	}
 
@@ -372,17 +353,13 @@ func handleDNSRequestWithForwarder(aConn net.PacketConn, aAddr net.Addr, aReques
 	requestFlags := binary.BigEndian.Uint16(aRequest[2:4])
 	requestQDCount := binary.BigEndian.Uint16(aRequest[4:6])
 
-	log.Printf("DEBUG: Request ID=%d, Flags=0x%04x, QDCount=%d", requestID, requestFlags, requestQDCount)
-
 	// First pass: check if we need to forward any questions
 	if shouldForwardRequest(aRequest, requestQDCount, aForwarder) {
-		log.Printf("DEBUG: Forwarding request to %s", aForwarder)
 		forwardRequest(aConn, aAddr, aRequest, requestID, requestFlags, requestQDCount, aForwarder, aForwarderClient)
 		return
 	}
 
 	// Second pass: handle A/AAAA records locally
-	log.Printf("DEBUG: Handling request locally")
 	handleLocalRequest(aConn, aAddr, aRequest, requestID, requestFlags, requestQDCount, aResolver)
 } // handleDNSRequestWithForwarder()
 
@@ -398,22 +375,16 @@ func handleDNSRequestWithForwarder(aConn net.PacketConn, aAddr net.Addr, aReques
 //   - `aResolver`: The DNS resolver to use for lookups.
 func handleLocalRequest(aConn net.PacketConn, aAddr net.Addr, aRequest []byte,
 	aID, aFlags, aQDCount uint16, aResolver *dnscache.TResolver) {
-	log.Printf("DEBUG: handleLocalRequest called with ID=%d, QDCount=%d", aID, aQDCount)
 
 	// For non-existent domains, send NXDOMAIN response immediately
 	if 0 < aQDCount {
 		// Extract the first hostname
-		hostname := extractFirstHostname(aRequest)
-		log.Printf("DEBUG: First hostname in request: %s", hostname)
-
-		if "" != hostname {
+		if hostname := extractFirstHostname(aRequest); "" != hostname {
 			// Try to lookup the hostname
 			ips, err := aResolver.Fetch(hostname)
-			log.Printf("DEBUG: Resolver.Fetch(%s) returned: ips=%v, err=%v", hostname, ips, err)
 
 			// If lookup fails, send NXDOMAIN immediately
 			if (nil != err) || (0 == len(ips)) {
-				log.Printf("DEBUG: Sending NXDOMAIN response for %s", hostname)
 				sendNXDOMAINResponse(aConn, aAddr, aID, aFlags, aQDCount, aRequest[12:])
 				return
 			}
@@ -600,7 +571,6 @@ func processARecord(aRequest, aResponse []byte, aOffset int, aAnswerCount uint16
 //   - `aQDCount`: The DNS request question count.
 //   - `aQuestion`: The DNS question section.
 func sendNXDOMAINResponse(aConn net.PacketConn, aAddr net.Addr, aID, aFlags, aQDCount uint16, aQuestion []byte) {
-	log.Printf("DEBUG: Sending NXDOMAIN response for ID=%d", aID)
 
 	// Prepare response
 	response := make([]byte, 512)
@@ -617,9 +587,8 @@ func sendNXDOMAINResponse(aConn net.PacketConn, aAddr net.Addr, aID, aFlags, aQD
 	questionLen := min(len(aQuestion), 500) // Ensure we don't exceed response buffer
 	copy(response[12:12+questionLen], aQuestion[:questionLen])
 
-	// Send response
-	n, err := aConn.WriteTo(response[:12+questionLen], aAddr)
-	log.Printf("DEBUG: NXDOMAIN response sent: %d bytes, err=%v", n, err)
+	_, _ = aConn.WriteTo(response[:12+questionLen], aAddr)
+	// Error sending response is not critical, hence we ignore it.
 } // sendNXDOMAINResponse()
 
 // `shouldForwardRequest()` determines if a DNS request should be forwarded.

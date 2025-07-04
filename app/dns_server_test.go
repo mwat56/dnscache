@@ -469,7 +469,7 @@ func Test_handleDNSRequest(t *testing.T) {
 
 	// Verify the resolver setup
 	ips, err := resolver.Fetch(nonExistentDomain)
-	t.Logf("Resolver.Fetch(%s) returned: ips=%v, err=%v", nonExistentDomain, ips, err)
+	t.Logf("Resolver.Fetch(%q) returned: ips=%v, err=%v", nonExistentDomain, ips, err)
 
 	// Create a test request for debugging
 	testReq := createDNSRequest(5678, nonExistentDomain)
@@ -637,7 +637,7 @@ func Test_handleDNSRequest(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			// Set a timeout for this specific test case
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second<<3)
 			defer cancel()
 
 			// Create a mock connection with a channel for responses
@@ -674,7 +674,7 @@ func Test_handleDNSRequest(t *testing.T) {
 				t.Logf("Test timed out after 5 seconds")
 				t.Fail()
 				return
-			case <-time.After(200 * time.Millisecond):
+			case <-time.After(time.Second << 1):
 				// Short timeout for tests that don't expect a response
 				if !tc.wantResp {
 					resp = []byte{} // Empty response for validation

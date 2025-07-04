@@ -199,7 +199,7 @@ func Test_TResolver_Fetch(t *testing.T) {
 		wantErr  bool
 	}{
 		{
-			name:     "fetch from cache",
+			name:     "01 - fetch from cache",
 			hostname: "cached.example.com",
 			setup: func(r *TResolver) {
 				r.ICacheList.Create(context.TODO(), "cached.example.com", []net.IP{
@@ -211,14 +211,14 @@ func Test_TResolver_Fetch(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:     "fetch uncached (lookup)",
+			name:     "02 - fetch uncached (lookup)",
 			hostname: "dnscache.ggl.io",
 			setup:    func(r *TResolver) {},
 			wantIPs:  []string{"3.33.165.172", "15.197.228.149"},
 			wantErr:  false,
 		},
 		{
-			name:     "fetch invalid hostname",
+			name:     "03 - fetch invalid hostname",
 			hostname: "invalid.end.of.universe",
 			setup:    func(r *TResolver) {},
 			wantIPs:  nil,
@@ -262,7 +262,7 @@ func Test_TResolver_FetchFirstString(t *testing.T) {
 		wantErr  bool
 	}{
 		{
-			name:     "fetch from cache",
+			name:     "01 - fetch from cache",
 			hostname: "cached.example.com",
 			setup: func(r *TResolver) {
 				r.ICacheList.Create(context.TODO(), "cached.example.com", []net.IP{
@@ -273,14 +273,14 @@ func Test_TResolver_FetchFirstString(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:     "fetch uncached (lookup)",
+			name:     "02 - fetch uncached (lookup)",
 			hostname: "dnscache.ggl.io",
 			setup:    func(r *TResolver) {},
 			want:     "3.33.165.172", // Assuming this is the first IP returned
 			wantErr:  false,
 		},
 		{
-			name:     "fetch invalid hostname",
+			name:     "03 - fetch invalid hostname",
 			hostname: "invalid.end.of.universe",
 			setup:    func(r *TResolver) {},
 			want:     "",
@@ -333,7 +333,7 @@ func Test_TResolver_FetchRandomString(t *testing.T) {
 		wantErr  bool
 	}{
 		{
-			name:     "fetch from cache",
+			name:     "01 - fetch from cache",
 			hostname: "cached.example.com",
 			setup: func(r *TResolver) {
 				r.ICacheList.Create(context.TODO(), "cached.example.com", []net.IP{
@@ -344,13 +344,13 @@ func Test_TResolver_FetchRandomString(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:     "fetch uncached (lookup)",
+			name:     "02 - fetch uncached (lookup)",
 			hostname: "dnscache.ggl.io",
 			setup:    func(r *TResolver) {},
 			wantErr:  false,
 		},
 		{
-			name:     "fetch invalid hostname",
+			name:     "03 - fetch invalid hostname",
 			hostname: "invalid.end.of.universe",
 			setup:    func(r *TResolver) {},
 			wantErr:  true,
@@ -498,7 +498,7 @@ func Test_TResolver_Refresh(t *testing.T) {
 		validate func(*testing.T, *TResolver)
 	}{
 		{
-			name: "multiple entries with valid hosts",
+			name: "01 - multiple entries with valid hosts",
 			setup: func(r *TResolver) {
 				// Use real domains that should resolve successfully
 				r.ICacheList.Create(context.TODO(), "example.com", []net.IP{
@@ -525,7 +525,7 @@ func Test_TResolver_Refresh(t *testing.T) {
 			},
 		},
 		{
-			name: "entries with invalid hosts",
+			name: "02 - entries with invalid hosts",
 			setup: func(r *TResolver) {
 				// Use a non-existent domain that should fail DNS lookup
 				r.ICacheList.Create(context.TODO(), "invalid.example.nonexistent", []net.IP{
@@ -581,22 +581,22 @@ func Test_validateDNSServers(t *testing.T) {
 		expected []string
 	}{
 		{
-			name:     "empty list",
+			name:     "01 - empty list",
 			servers:  []string{},
 			expected: nil,
 		},
 		{
-			name:     "valid IPs",
+			name:     "02 - valid IPs",
 			servers:  []string{"8.8.8.8", "1.1.1.1"},
 			expected: []string{"8.8.8.8", "1.1.1.1"},
 		},
 		{
-			name:     "mixed valid and invalid",
+			name:     "03 - mixed valid and invalid",
 			servers:  []string{"8.8.8.8", "invalid", "1.1.1.1"},
 			expected: []string{"8.8.8.8", "1.1.1.1"},
 		},
 		{
-			name:     "all invalid",
+			name:     "04 - all invalid",
 			servers:  []string{"invalid1", "invalid2"},
 			expected: []string{},
 		},

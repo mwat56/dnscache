@@ -24,7 +24,7 @@ import (
 
 const (
 	// UI colours:
-	// colourBackground = tcell.ColorBlack
+	colourBackground = tcell.ColorTeal
 	// colourError      = tcell.ColorRed
 	colourHeader    = tcell.ColorYellow
 	colourHighlight = tcell.ColorGreen
@@ -61,21 +61,21 @@ type (
 //   - `[]CacheEntry`: List of cache entries.
 //   - `error`: Error if any occurred.
 func getCacheEntries(aState *tAppState) ([]tCacheEntry, error) {
-	if nil == aState || nil == aState.resolver {
-		return nil, fmt.Errorf("resolver not initialised")
+	if (nil == aState) || (nil == aState.resolver) {
+		return nil, fmt.Errorf("app or resolver not initialised")
 	}
 
 	entries := []tCacheEntry{}
 
 	// Create a context with timeout for the operation
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second<<2)
 	defer cancel()
 
 	// Get all hostnames from the cache
 	for hostname := range aState.resolver.ICacheList.Range(ctx) {
 		// Get IPs for this hostname
 		ips, ok := aState.resolver.ICacheList.IPs(ctx, hostname)
-		if !ok || len(ips) == 0 {
+		if !ok || (0 == len(ips)) {
 			continue
 		}
 
@@ -106,6 +106,7 @@ func showAllowListPage(aState *tAppState) {
 	form := tview.NewForm()
 	// Store the box for potential styling/layout adjustments
 	formBox := form.Box.SetTitle(" Allow Lists ").
+		SetBackgroundColor(colourBackground).
 		SetTitleColor(colourHeader).
 		SetBorder(true)
 
@@ -142,12 +143,15 @@ func showAllowListPage(aState *tAppState) {
 	table := tview.NewTable().SetBorders(true)
 	// Store the box for potential styling/layout adjustments
 	tableBox := table.Box.SetTitle(" Current Allow Lists ").
+		SetBackgroundColor(colourBackground).
 		SetTitleColor(colourHeader).
 		SetBorder(true)
 
 	// Add headers
-	table.SetCell(0, 0, tview.NewTableCell("Source").SetTextColor(colourHighlight).SetSelectable(false))
-	table.SetCell(0, 1, tview.NewTableCell("Entries").SetTextColor(colourHighlight).SetSelectable(false))
+	table.SetCell(0, 0, tview.NewTableCell("Source").
+		SetTextColor(colourHighlight).SetSelectable(false))
+	table.SetCell(0, 1, tview.NewTableCell("Entries").
+		SetTextColor(colourHighlight).SetSelectable(false))
 
 	// TODO: Populate with actual allow lists
 	// This requires a method to get current allow lists
@@ -179,6 +183,7 @@ func showBlockListPage(aState *tAppState) {
 	// Create form for managing block lists
 	form := tview.NewForm()
 	formBox := form.Box.SetTitle(" Block Lists ").
+		SetBackgroundColor(colourBackground).
 		SetTitleColor(colourHeader).
 		SetBorder(true)
 
@@ -193,6 +198,7 @@ func showBlockListPage(aState *tAppState) {
 	// Create table for existing block lists
 	table := tview.NewTable().SetBorders(true)
 	tableBox := table.Box.SetTitle(" Current Block Lists ").
+		SetBackgroundColor(colourBackground).
 		SetTitleColor(colourHeader).
 		SetBorder(true)
 
@@ -269,6 +275,7 @@ func showCachePage(aState *tAppState) {
 	// Create table for cache entries
 	table := tview.NewTable().SetBorders(true)
 	tableBox := table.Box.SetTitle(" DNS Cache Entries ").
+		SetBackgroundColor(colourBackground).
 		SetTitleColor(colourHeader).
 		SetBorder(true)
 
@@ -304,8 +311,8 @@ func showCachePage(aState *tAppState) {
 
 			// Format IP addresses as comma-separated string
 			ipStrings := make([]string, len(entry.IPs))
-			for j, ip := range entry.IPs {
-				ipStrings[j] = ip.String()
+			for idx, ip := range entry.IPs {
+				ipStrings[idx] = ip.String()
 			}
 			ipText := strings.Join(ipStrings, ", ")
 
@@ -334,11 +341,11 @@ func showCachePage(aState *tAppState) {
 		case tcell.KeyDelete:
 			// Delete the selected entry
 			row, _ := table.GetSelection()
-			if 0 < row && table.GetRowCount() > row {
+			if (0 < row) && (table.GetRowCount() > row) {
 				hostname := table.GetCell(row, 0).Text
 
 				// Create context for the operation
-				ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second<<2)
 				defer cancel()
 
 				// Delete from cache
@@ -352,7 +359,7 @@ func showCachePage(aState *tAppState) {
 			return nil
 
 		case tcell.KeyRune:
-			if 'r' == aEvent.Rune() || 'R' == aEvent.Rune() {
+			if ('r' == aEvent.Rune()) || ('R' == aEvent.Rune()) {
 				// Refresh the table
 				populateTable()
 				return nil
@@ -408,6 +415,7 @@ func showConfigPage(aState *tAppState) {
 	// Create form for configuration
 	form := tview.NewForm()
 	formBox := form.SetTitle(" Configuration ").
+		SetBackgroundColor(colourBackground).
 		SetTitleColor(colourHeader).
 		SetBorder(true)
 
@@ -500,6 +508,7 @@ func showMetricsPage(aState *tAppState) {
 	metrics := tview.NewTextView().
 		SetDynamicColors(true)
 	_ = metrics.Box.SetTitle(" DNS Cache Metrics ")
+	_ = metrics.Box.SetBackgroundColor(colourBackground)
 	_ = metrics.Box.SetTitleColor(colourHeader)
 	_ = metrics.Box.SetBorder(true)
 

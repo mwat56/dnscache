@@ -258,32 +258,6 @@ func (tl *tTrieList) Len() int {
 	return patterns
 } // Len()
 
-/* * /
-// `RangeX()` returns a channel that yields all FQDNs in sorted order.
-//
-// Usage: for fqdn := range fqdnList.Range() { ... }
-//
-// The channel is closed automatically when all entries have been yielded.
-func (tl *tTrieList) RangeX(aCtx context.Context) <-chan string {
-	ch := make(chan string)
-	if nil == tl {
-		close(ch)
-		return ch
-	}
-
-	go func() {
-		defer close(ch)
-		tl.RLock()
-		for _, fqdn := range tl.node.allPatterns(aCtx) {
-			ch <- fqdn
-		}
-		tl.RUnlock()
-	}()
-
-	return ch
-} // RangeX()
-/* */
-
 // `Range()` returns a channel that yields all FQDNs in sorted order.
 //
 // Usage: for fqdn := range ICacheList.Range() { ... }

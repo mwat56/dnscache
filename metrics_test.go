@@ -20,7 +20,7 @@ func Test_TMetrics_check(t *testing.T) {
 		want    bool
 	}{
 		{
-			name: "consistent",
+			name: "01 - consistent",
 			metrics: &TMetrics{
 				Lookups: 10,
 				Hits:    7,
@@ -33,19 +33,19 @@ func Test_TMetrics_check(t *testing.T) {
 			want:    true,
 		},
 		{
-			name:    "nil",
+			name:    "02 - nil",
 			metrics: nil,
 			correct: true,
 			want:    true,
 		},
 		{
-			name:    "empty",
+			name:    "03 - empty",
 			metrics: &TMetrics{},
 			correct: true,
 			want:    true,
 		},
 		{
-			name: "lookups < hits + misses",
+			name: "04 - lookups < hits + misses",
 			metrics: &TMetrics{
 				Lookups: 10,
 				Hits:    7,
@@ -58,7 +58,7 @@ func Test_TMetrics_check(t *testing.T) {
 			want:    false,
 		},
 		{
-			name: "lookups < hits + misses (correct)",
+			name: "05 - lookups < hits + misses (correct)",
 			metrics: &TMetrics{
 				Lookups: 10,
 				Hits:    7,
@@ -71,7 +71,7 @@ func Test_TMetrics_check(t *testing.T) {
 			want:    false,
 		},
 		{
-			name: "lookups > hits + misses (correct)",
+			name: "06 - lookups > hits + misses (correct)",
 			metrics: &TMetrics{
 				Lookups: 10,
 				Hits:    7,
@@ -103,7 +103,7 @@ func Test_TMetrics_clone(t *testing.T) {
 		wantRMetrics *TMetrics
 	}{
 		{
-			name: "all zero",
+			name: "01 - all zero",
 			setup: func() {
 				// Reset metrics
 				gMetrics = new(TMetrics)
@@ -118,7 +118,7 @@ func Test_TMetrics_clone(t *testing.T) {
 			},
 		},
 		{
-			name: "all non-zero",
+			name: "02 - all non-zero",
 			setup: func() {
 				// Set non-zero metrics
 				gMetrics = &TMetrics{
@@ -173,7 +173,7 @@ func Test_TMetrics_String(t *testing.T) {
 		want    string
 	}{
 		{
-			name: "all zero",
+			name: "01 - all zero",
 			metrics: TMetrics{
 				Lookups: 0,
 				Hits:    0,
@@ -185,7 +185,7 @@ func Test_TMetrics_String(t *testing.T) {
 			want: "Lookups: 0\nHits: 0\nMisses: 0\nRetries: 0\nErrors: 0\nPeak: 0\n",
 		},
 		{
-			name: "all non-zero",
+			name: "02 - all non-zero",
 			metrics: TMetrics{
 				Lookups: 10,
 				Hits:    7,

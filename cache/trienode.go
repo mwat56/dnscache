@@ -250,15 +250,6 @@ func (cn *tTrieNode) count(aCtx context.Context) (rNodes, rPatterns int) {
 	}
 
 	return
-	/*
-			This implementation is about 100% faster than the previous one
-			and uses about 85% less allocations:
-
-		cpu: AMD Ryzen 9 5950X 16-Core Processor
-		Benchmark_tTrieNode_count1-32    	      33	  31715331 ns/op	12147507 B/op	  226558 allocs/op
-		Benchmark_tTrieNode_count2-32    	      66	  17834899 ns/op	 6904182 B/op	      20 allocs/op
-		PASS
-	*/
 } // count()
 
 // `Create()` inserts a pattern to the node's Trie.

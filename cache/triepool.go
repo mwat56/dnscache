@@ -90,20 +90,4 @@ func putNode(aNode *tTrieNode) {
 	_ = trieNodePool.Put(aNode) // ignore the (here impossible) error
 } // putNode()
 
-// ---------------------------------------------------------------------------
-// Helper/mapper function:
-
-// `trieNodePoolMetrics()` returns the current pool metrics.
-//
-// Returns:
-//   - `*np.TPoolMetrics`: Current pool metrics.
-func triePoolMetrics() (rMetrics *np.TPoolMetrics) {
-	if nil == trieNodePool {
-		initTriePool() // lazy initialisation
-	}
-	rMetrics, _ = trieNodePool.Metrics()
-
-	return
-} // triePoolMetrics()
-
 /* _EoF_ */
